@@ -16,7 +16,7 @@ Changes will flow both ways. A bookmark created in the browser is committed and 
 
 ## Architecture
 
-- **Browser extension** (TypeScript, planned): Chromium-based browsers first (Chrome, Edge, Brave, Opera), then Firefox. Safari has no bookmarks API and is not planned.
+- **Browser extension** (TypeScript, Manifest V3): Chromium-based browsers (Chrome, Edge, Brave, Opera) and Firefox. Safari has no bookmarks API and is not planned.
 - **Host** (`boom-host`, Rust): a native messaging host and CLI in one binary, `boom`. The browser starts it with the extension origin. Any other call of the form `boom cli <command>` runs the CLI.
 - **Protocol:** each native messaging call is stateless. The extension sends one JSON request and reads one JSON response. Requests name an `action`, such as `ping`, `config_show`, `config_set` or `gitrepo_create`.
 - **Config:** `~/.config/boom/config.toml`, on all platforms. The host owns this file, and the extension changes it only through the host.
@@ -65,19 +65,28 @@ npm ci
 npm test
 ```
 
-`npm run build` writes an unpacked extension to `boom-extension/dist/`. In Chrome, Edge, Brave or Opera, open the extensions page, enable developer mode, and load that folder.
+`npm run build` writes two unpacked extensions:
 
-The browser starts the host only if a native messaging manifest is registered for it. The manifest name must be `com.boom.host`, and `path` must be the absolute path to the `boom` binary. Replace `<EXTENSION_ID>` with the ID the browser shows for the loaded extension. On macOS for Chrome, the file is `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/com.boom.host.json`:
+- `boom-extension/dist/` for Chromium browsers (Chrome, Edge, Brave, Opera).
+- `boom-extension/dist-firefox/` for Firefox.
 
-```json
-{
-  "name": "com.boom.host",
-  "description": "boom native messaging host",
-  "path": "/absolute/path/to/boom",
-  "type": "stdio",
-  "allowed_origins": ["chrome-extension://<EXTENSION_ID>/"]
-}
+#### Chromium
+
+Load `boom-extension/dist` as an unpacked extension (developer mode on the extensions page). The browser shows an ID for it. Copy `native-host/chrome/com.boom.host.json`, replace `/ABSOLUTE/PATH/TO/boom` with the path of the `boom` binary and `<EXTENSION_ID>` with the ID, then place it in the browser's native messaging folder. On macOS for Chrome:
+
+```bash
+cp native-host/chrome/com.boom.host.json ~/Library/Application\ Support/Google/Chrome/NativeMessagingHosts/
 ```
+
+#### Firefox
+
+Firefox reads its own host manifest, from `native-host/firefox/`. The extension ID is fixed in `boom-extension/src/manifest.firefox.json` (`browser_specific_settings.gecko.id`), so no ID needs replacing. Copy `native-host/firefox/com.boom.host.json`, set `path` to the absolute path of the `boom` binary, and place it in:
+
+- macOS: `~/Library/Application Support/Mozilla/NativeMessagingHosts/com.boom.host.json`
+- Linux: `~/.mozilla/native-messaging-hosts/com.boom.host.json`
+- Windows: a registry key `HKCU\Software\Mozilla\NativeMessagingHosts\com.boom.host` whose default value is the full path of the JSON file.
+
+To load the extension in Firefox, open `about:debugging`, choose "This Firefox", then "Load Temporary Add-on" and pick `boom-extension/dist-firefox/manifest.json`.
 
 ## Repository layout
 
@@ -85,7 +94,8 @@ The browser starts the host only if a native messaging manifest is registered fo
 | --- | --- |
 | `boom-host/` | Native messaging host and CLI (`boom` binary) |
 | `boom-bookmarks/` | Sync library: bookmark model, planner, git reads, writes and sync |
-| `boom-extension/` | Browser extension (TypeScript, Manifest V3) |
+| `boom-extension/` | Browser extension (TypeScript, Manifest V3, Chromium and Firefox builds) |
+| `native-host/` | Native messaging host manifests, one folder per browser family |
 | `.github/workflows/` | CI |
 
 ## Roadmap

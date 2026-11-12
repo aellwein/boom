@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "boom",
+  "version": "0.0.1",
+  "description": "Sync browser bookmarks through a git repository.",
+  "permissions": ["nativeMessaging", "bookmarks", "storage", "alarms"],
+  "background": {
+    "scripts": ["background.js"],
+    "type": "module"
+  },
+  "action": {
+    "default_title": "boom",
+    "default_popup": "popup.html"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "{ef237744-33c6-4d0f-9170-38e065fce85a}",
+      "strict_min_version": "128.0"
+    }
+  }
+}

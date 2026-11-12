@@ -1,0 +1,7 @@
+{
+  "name": "com.boom.host",
+  "description": "boom native messaging host",
+  "path": "/ABSOLUTE/PATH/TO/boom",
+  "type": "stdio",
+  "allowed_extensions": ["{ef237744-33c6-4d0f-9170-38e065fce85a}"]
+}

@@ -1,0 +1,7 @@
+{
+  "name": "com.boom.host",
+  "description": "boom native messaging host",
+  "path": "/ABSOLUTE/PATH/TO/boom",
+  "type": "stdio",
+  "allowed_origins": ["chrome-extension://<EXTENSION_ID>/"]
+}
