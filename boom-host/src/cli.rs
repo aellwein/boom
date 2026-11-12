@@ -1,6 +1,6 @@
 //! Command-line interface, invoked as `boom cli <command>`.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 
@@ -78,7 +78,7 @@ pub fn run(cli: Cli) -> i32 {
             CliCommand::Ping => dispatch(Action::Ping, &config_path),
             CliCommand::Config {
                 command: ConfigCommand::Show,
-            } => dispatch(Action::ConfigShow, &config_path),
+            } => show_config(&config_path),
             CliCommand::Config {
                 command: ConfigCommand::Set { key, value },
             } => dispatch(Action::ConfigSet { key, value }, &config_path),
@@ -90,7 +90,26 @@ pub fn run(cli: Cli) -> i32 {
     }
 }
 
-fn dispatch(action: Action, config_path: &std::path::Path) -> i32 {
+/// Prints the config file as TOML, the same format it is stored in.
+fn show_config(config_path: &Path) -> i32 {
+    match config_as_toml(config_path) {
+        Ok(text) => {
+            print!("{text}");
+            0
+        }
+        Err(err) => {
+            eprintln!("error: {err}");
+            1
+        }
+    }
+}
+
+fn config_as_toml(config_path: &Path) -> Result<String, String> {
+    let config = config::load(config_path).map_err(|err| err.to_string())?;
+    toml::to_string(&config).map_err(|err| err.to_string())
+}
+
+fn dispatch(action: Action, config_path: &Path) -> i32 {
     let response = protocol::handle(
         Request {
             id: "cli".into(),
@@ -151,5 +170,23 @@ mod tests {
     fn parses_sync() {
         let cli = Cli::try_parse_from(["boom", "cli", "sync"]);
         assert!(cli.is_ok(), "{:?}", cli.err());
+    }
+
+    #[test]
+    fn config_show_prints_stored_config_as_toml() {
+        let dir = std::env::temp_dir().join(format!("boom-cli-show-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("config.toml");
+        let config = config::Config {
+            user_name: Some("Alex".into()),
+            ..Default::default()
+        };
+        config::save(&path, &config).unwrap();
+
+        let text = config_as_toml(&path).unwrap();
+        assert!(!text.trim_start().starts_with('{'), "not TOML: {text}");
+        let parsed: config::Config = toml::from_str(&text).unwrap();
+        assert_eq!(parsed, config);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
