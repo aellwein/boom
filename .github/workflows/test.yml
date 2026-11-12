@@ -37,3 +37,23 @@ jobs:
 
       - name: Test
         run: cargo test --workspace
+
+  extension:
+    name: extension (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: boom-extension/package-lock.json
+
+      - name: Install
+        working-directory: boom-extension
+        run: npm ci
+
+      - name: Typecheck and test
+        working-directory: boom-extension
+        run: npm test

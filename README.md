@@ -53,21 +53,46 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ```
 
-CI runs format, clippy and tests on Ubuntu, macOS and Windows (`.github/workflows/test.yml`).
+CI runs format, clippy and tests on Ubuntu, macOS and Windows, and the extension tests on Ubuntu (`.github/workflows/test.yml`).
+
+### Browser extension
+
+Requirements: Node.js 26.
+
+```bash
+cd boom-extension
+npm ci
+npm test
+```
+
+`npm run build` writes an unpacked extension to `boom-extension/dist/`. In Chrome, Edge, Brave or Opera, open the extensions page, enable developer mode, and load that folder.
+
+The browser starts the host only if a native messaging manifest is registered for it. The manifest name must be `com.boom.host`, and `path` must be the absolute path to the `boom` binary. Replace `<EXTENSION_ID>` with the ID the browser shows for the loaded extension. On macOS for Chrome, the file is `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/com.boom.host.json`:
+
+```json
+{
+  "name": "com.boom.host",
+  "description": "boom native messaging host",
+  "path": "/absolute/path/to/boom",
+  "type": "stdio",
+  "allowed_origins": ["chrome-extension://<EXTENSION_ID>/"]
+}
+```
 
 ## Repository layout
 
 | Path | Content |
 | --- | --- |
 | `boom-host/` | Native messaging host and CLI (`boom` binary) |
-| `boom-bookmarks/` | Sync library (placeholder) |
+| `boom-bookmarks/` | Sync library: bookmark model, planner, git reads, writes and sync |
+| `boom-extension/` | Browser extension (TypeScript, Manifest V3) |
 | `.github/workflows/` | CI |
 
 ## Roadmap
 
 - [x] Local git repo creation and config management
 - [ ] Bookmark sync library: git reads and writes, state calculation
-- [ ] Browser extension for Chromium-based browsers
+- [ ] Browser extension for Chromium-based browsers (scaffold and host ping done)
 - [ ] Periodic pull from the extension
 - [ ] Firefox support
 - [ ] GitHub repo creation
