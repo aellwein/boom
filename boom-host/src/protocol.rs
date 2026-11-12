@@ -38,6 +38,8 @@ pub enum Action {
     GitrepoStatus,
     /// Commits local changes in the bookmark repo, then pulls and pushes `origin`.
     Sync,
+    /// Fetches and merges `origin` without committing or pushing.
+    Pull,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -114,20 +116,28 @@ fn run(action: Action, config_path: &Path) -> Result<Value, String> {
             Ok(json!({ "url": url }))
         }
         Action::Sync => Ok(sync_json(&ops::sync(config_path)?)),
+        Action::Pull => {
+            let (integration, conflicts) = integration_fields(ops::pull(config_path)?);
+            Ok(json!({ "integration": integration, "conflicts": conflicts }))
+        }
     }
 }
 
 fn sync_json(report: &SyncReport) -> Value {
-    let (integration, conflicts) = match report.integration {
-        Integration::UpToDate => ("up_to_date", 0),
-        Integration::FastForward => ("fast_forward", 0),
-        Integration::Merged { conflicts } => ("merged", conflicts),
-    };
+    let (integration, conflicts) = integration_fields(report.integration);
     json!({
         "committed": report.committed,
         "integration": integration,
         "conflicts": conflicts,
     })
+}
+
+fn integration_fields(integration: Integration) -> (&'static str, usize) {
+    match integration {
+        Integration::UpToDate => ("up_to_date", 0),
+        Integration::FastForward => ("fast_forward", 0),
+        Integration::Merged { conflicts } => ("merged", conflicts),
+    }
 }
 
 #[cfg(test)]
@@ -409,6 +419,15 @@ mod tests {
         let result = status.result.unwrap();
         assert!(result["repo_path"].is_null());
         assert!(result["origin_url"].is_null());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn pull_action_reports_missing_repo() {
+        let dir = temp_path("pull_action");
+        let path = dir.join("config.toml");
+        let response = handle(request(Action::Pull), &path);
+        assert!(!response.ok);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

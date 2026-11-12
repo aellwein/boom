@@ -9,7 +9,7 @@ use std::path::Path;
 use git2::build::CheckoutBuilder;
 use git2::{
     Cred, CredentialType, Delta, Direction, FetchOptions, IndexAddOption, Oid, PushOptions,
-    RemoteCallbacks, Repository, Signature,
+    RemoteCallbacks, Repository, Signature, StatusOptions,
 };
 
 const REMOTE: &str = "origin";
@@ -169,6 +169,15 @@ pub fn integrate(
     repo.checkout_tree(merged.as_object(), Some(&mut checkout))?;
 
     Ok(Integration::Merged { conflicts: count })
+}
+
+/// True if the repo at `path` has no uncommitted or untracked changes.
+pub fn is_clean(path: &Path) -> Result<bool, git2::Error> {
+    let repo = Repository::open(path)?;
+    let mut options = StatusOptions::new();
+    options.include_untracked(true);
+    let statuses = repo.statuses(Some(&mut options))?;
+    Ok(statuses.is_empty())
 }
 
 /// Returns true if the repo at `path` has an `origin` remote.

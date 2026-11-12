@@ -6,7 +6,8 @@
   "permissions": [
     "nativeMessaging",
     "bookmarks",
-    "storage"
+    "storage",
+    "alarms"
   ],
   "background": {
     "service_worker": "background.js",

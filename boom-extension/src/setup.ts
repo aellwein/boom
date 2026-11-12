@@ -2,6 +2,7 @@
 //! remembers the first-sync choice in extension storage.
 
 import { callHost } from "./host.js";
+import { schedulePull } from "./schedule.js";
 import type { HostConfig, RepoStatus } from "./protocol.js";
 import {
   buildSetupActions,
@@ -88,6 +89,7 @@ async function save(event: SubmitEvent): Promise<void> {
     }
   }
   await chrome.storage.local.set({ initialSync: check.form.initialSync });
+  await schedulePull();
   message.textContent = "Setup saved.";
 }
 

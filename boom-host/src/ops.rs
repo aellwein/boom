@@ -89,12 +89,7 @@ pub fn sync(config_path: &Path) -> Result<SyncReport, String> {
     let (name, email) =
         identity(&config).map_err(|_| "set user_name and user_email before syncing".to_string())?;
     let repo_path = repo_path(&config)?;
-    if !git::has_origin(repo_path).map_err(|err| err.to_string())? {
-        return Err(format!(
-            "{} has no 'origin' remote; run: boom cli gitrepo set-remote <url>",
-            repo_path.display()
-        ));
-    }
+    require_origin(repo_path)?;
 
     let committed = git::commit_all(repo_path, SYNC_COMMIT_MESSAGE, name, email)
         .map_err(|err| err.to_string())?
@@ -104,6 +99,33 @@ pub fn sync(config_path: &Path) -> Result<SyncReport, String> {
         committed,
         integration,
     })
+}
+
+/// Fetches and merges origin without committing or pushing.
+///
+/// Refuses to run while the repo has uncommitted changes, because merging
+/// rewrites the working tree. Run `sync` first to record them.
+pub fn pull(config_path: &Path) -> Result<Integration, String> {
+    let config = config_show(config_path)?;
+    let (name, email) =
+        identity(&config).map_err(|_| "set user_name and user_email before pulling".to_string())?;
+    let repo_path = repo_path(&config)?;
+    require_origin(repo_path)?;
+    if !git::is_clean(repo_path).map_err(|err| err.to_string())? {
+        return Err("the bookmark repo has uncommitted changes; run: boom cli sync".to_string());
+    }
+    git::integrate(repo_path, name, email).map_err(|err| err.to_string())
+}
+
+fn require_origin(repo_path: &Path) -> Result<(), String> {
+    if git::has_origin(repo_path).map_err(|err| err.to_string())? {
+        Ok(())
+    } else {
+        Err(format!(
+            "{} has no 'origin' remote; run: boom cli gitrepo set-remote <url>",
+            repo_path.display()
+        ))
+    }
 }
 
 fn repo_path(config: &Config) -> Result<&Path, String> {
@@ -178,6 +200,81 @@ mod tests {
         let config_path = dir.join("config.toml");
         let err = gitrepo_set_remote(&config_path, "https://example.invalid/x.git").unwrap_err();
         assert!(err.contains("gitrepo create"), "{err}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn pull_requires_repo_path() {
+        let dir = temp_dir("pull_no_repo");
+        let config_path = dir.join("config.toml");
+        with_identity(&config_path);
+        let err = pull(&config_path).unwrap_err();
+        assert!(err.contains("gitrepo create"), "{err}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn repo_with_remote(dir: &std::path::Path) -> (std::path::PathBuf, std::path::PathBuf) {
+        let config_path = dir.join("config.toml");
+        let remote = dir.join("remote.git");
+        with_identity(&config_path);
+        git2::Repository::init_opts(
+            &remote,
+            git2::RepositoryInitOptions::new()
+                .bare(true)
+                .initial_head("main"),
+        )
+        .unwrap();
+        gitrepo_create(&config_path, &dir.join("bookmarks"), remote.to_str()).unwrap();
+        sync(&config_path).unwrap();
+        (config_path, remote)
+    }
+
+    #[test]
+    fn pull_after_sync_is_up_to_date() {
+        let dir = temp_dir("pull_up_to_date");
+        let (config_path, _remote) = repo_with_remote(&dir);
+        assert_eq!(pull(&config_path).unwrap(), Integration::UpToDate);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn pull_refuses_uncommitted_changes() {
+        let dir = temp_dir("pull_dirty");
+        let (config_path, _remote) = repo_with_remote(&dir);
+        std::fs::write(
+            dir.join("bookmarks").join("0010_Docs.toml"),
+            "title = \"D\"\nurl = \"https://d.example\"\n",
+        )
+        .unwrap();
+        let err = pull(&config_path).unwrap_err();
+        assert!(err.contains("uncommitted"), "{err}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn pull_fast_forwards_a_new_remote_commit() {
+        let dir = temp_dir("pull_ff");
+        let (config_path, remote) = repo_with_remote(&dir);
+
+        // A second clone pushes a change, as another machine would.
+        let other = dir.join("other");
+        git2::Repository::clone(remote.to_str().unwrap(), &other).unwrap();
+        std::fs::write(
+            other.join("0010_Docs.toml"),
+            "title = \"D\"\nurl = \"https://d.example\"\n",
+        )
+        .unwrap();
+        boom_bookmarks::git::commit_all(
+            &other,
+            "other: add docs",
+            "Other",
+            "other@example.invalid",
+        )
+        .unwrap();
+        boom_bookmarks::git::push(&other).unwrap();
+
+        assert_eq!(pull(&config_path).unwrap(), Integration::FastForward);
+        assert!(dir.join("bookmarks").join("0010_Docs.toml").exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

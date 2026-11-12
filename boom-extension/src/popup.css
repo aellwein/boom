@@ -61,3 +61,9 @@ button {
   font-size: 13px;
   color: var(--accent);
 }
+
+.muted {
+  color: #6b7280;
+  font-size: 12px;
+  margin: 6px 0 0;
+}

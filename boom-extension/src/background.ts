@@ -4,6 +4,7 @@
 
 import type { HostResponse, PingResult } from "./protocol.js";
 import { callHost } from "./host.js";
+import { PULL_ALARM, runPull, schedulePull } from "./schedule.js";
 import { convertBrowserTree } from "./browser-tree.js";
 import { summarize, type TreeNode, type TreeSummary } from "./model.js";
 
@@ -39,3 +40,18 @@ async function readBookmarks(): Promise<BookmarksResult> {
   const perRoot = roots.map((tree) => ({ title: tree.title, summary: summarize([tree]), tree }));
   return { summary: summarize(roots), roots: perRoot };
 }
+
+// Alarms are re-created on install and browser start. The setup page calls
+// schedulePull again after it saves a repo.
+chrome.runtime.onInstalled.addListener(() => {
+  void schedulePull();
+});
+chrome.runtime.onStartup.addListener(() => {
+  void schedulePull();
+});
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === PULL_ALARM) {
+    void runPull();
+  }
+});
+

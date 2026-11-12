@@ -41,6 +41,8 @@ pub enum CliCommand {
     },
     /// Commit local changes, then pull and push the bookmark repo.
     Sync,
+    /// Fetch and merge origin without committing or pushing.
+    Pull,
 }
 
 #[derive(Debug, Subcommand)]
@@ -104,6 +106,7 @@ pub fn run(cli: Cli) -> i32 {
             } => ops::gitrepo_set_remote(&config_path, &url)
                 .map(|()| println!("origin set to {url}")),
             CliCommand::Sync => ops::sync(&config_path).map(|report| print_sync(&report)),
+            CliCommand::Pull => ops::pull(&config_path).map(print_integration),
         },
     };
 
@@ -127,13 +130,8 @@ fn config_as_toml(config_path: &Path) -> Result<String, String> {
     toml::to_string(&config).map_err(|err| err.to_string())
 }
 
-fn print_sync(report: &SyncReport) {
-    if report.committed {
-        println!("committed local changes");
-    } else {
-        println!("no local changes to commit");
-    }
-    match report.integration {
+fn print_integration(integration: Integration) {
+    match integration {
         Integration::UpToDate => println!("up to date with origin"),
         Integration::FastForward => println!("fast-forwarded to origin"),
         Integration::Merged { conflicts: 0 } => println!("merged with origin"),
@@ -141,6 +139,15 @@ fn print_sync(report: &SyncReport) {
             println!("merged with origin, {conflicts} conflict(s) resolved by last writer wins")
         }
     }
+}
+
+fn print_sync(report: &SyncReport) {
+    if report.committed {
+        println!("committed local changes");
+    } else {
+        println!("no local changes to commit");
+    }
+    print_integration(report.integration);
     println!("pushed to origin");
 }
 

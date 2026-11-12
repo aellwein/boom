@@ -36,6 +36,7 @@ export type HostAction =
   | { action: "gitrepo_create"; params: { path: string; remote?: string } }
   | { action: "gitrepo_set_remote"; params: { url: string } }
   | { action: "gitrepo_status" }
+  | { action: "pull" }
   | { action: "sync" };
 
 /// The host's config, as `config_show` returns it.
@@ -45,6 +46,20 @@ export interface HostConfig {
   repo_path: string | null;
   conflict_policy: string;
   poll_interval_secs: number;
+}
+
+/// Result of `pull`, as the host returns it.
+export interface PullResult {
+  integration: "up_to_date" | "fast_forward" | "merged";
+  conflicts: number;
+}
+
+/// The last pull, kept in extension storage so the popup can show it.
+export interface PullRecord {
+  at: string;
+  ok: boolean;
+  result?: PullResult;
+  error?: string;
 }
 
 /// The configured repo folder and its `origin` URL, as `gitrepo_status` returns them.

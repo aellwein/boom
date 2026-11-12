@@ -2,12 +2,14 @@
 //! of the browser's bookmarks.
 
 import type { BookmarksResult } from "./background.js";
-import type { HostResponse, PingResult } from "./protocol.js";
+import type { HostResponse, PingResult, PullRecord } from "./protocol.js";
+import { describePull, LAST_PULL_KEY } from "./schedule.js";
 
 const status = document.getElementById("status") as HTMLParagraphElement;
 const pingButton = document.getElementById("ping") as HTMLButtonElement;
 const bookmarksButton = document.getElementById("bookmarks") as HTMLButtonElement;
 const bookmarkList = document.getElementById("bookmark-list") as HTMLUListElement;
+const lastPull = document.getElementById("last-pull") as HTMLParagraphElement;
 
 async function checkHost(): Promise<void> {
   status.textContent = "Checking host...";
@@ -34,6 +36,12 @@ async function showBookmarks(): Promise<void> {
   }
 }
 
+async function showLastPull(): Promise<void> {
+  const stored = await chrome.storage.local.get(LAST_PULL_KEY);
+  const record = stored[LAST_PULL_KEY] as PullRecord | undefined;
+  lastPull.textContent = record ? describePull(record) : "No pull has run yet.";
+}
+
 function addItem(text: string): void {
   const item = document.createElement("li");
   item.textContent = text;
@@ -42,8 +50,10 @@ function addItem(text: string): void {
 
 pingButton.addEventListener("click", () => {
   void checkHost();
+void showLastPull();
 });
 bookmarksButton.addEventListener("click", () => {
   void showBookmarks();
 });
 void checkHost();
+void showLastPull();
