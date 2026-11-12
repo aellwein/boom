@@ -6,6 +6,7 @@
 
 mod cli;
 mod config;
+mod gitrepo;
 mod native;
 mod protocol;
 
@@ -44,10 +45,8 @@ fn serve_native() -> io::Result<()> {
     let mut output = stdout.lock();
 
     while let Some(body) = native::read_message(&mut input)? {
-        // Load config per request so changes made elsewhere apply immediately.
-        let config = config::load(&config_path)?;
         let response = match serde_json::from_slice::<Request>(&body) {
-            Ok(request) => protocol::handle(request, &config),
+            Ok(request) => protocol::handle(request, &config_path),
             Err(err) => protocol::Response {
                 id: String::new(),
                 ok: false,

@@ -1,8 +1,10 @@
 //! Command-line interface, invoked as `boom cli <command>`.
 
+use std::path::PathBuf;
+
 use clap::{Parser, Subcommand};
 
-use crate::config::{self, Config};
+use crate::config::{self, ConfigKey};
 use crate::protocol::{self, Action, Request};
 
 #[derive(Debug, Parser)]
@@ -25,10 +27,15 @@ pub enum TopCommand {
 pub enum CliCommand {
     /// Health check of the host.
     Ping,
-    /// Inspect the config.
+    /// Inspect or change the config.
     Config {
         #[command(subcommand)]
         command: ConfigCommand,
+    },
+    /// Manage the bookmark git repo.
+    Gitrepo {
+        #[command(subcommand)]
+        command: GitrepoCommand,
     },
 }
 
@@ -36,6 +43,22 @@ pub enum CliCommand {
 pub enum ConfigCommand {
     /// Print the current config as TOML.
     Show,
+    /// Set one config key, e.g. `config set user-name "Alex"`.
+    Set {
+        /// Key to change.
+        key: ConfigKey,
+        /// New value.
+        value: String,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum GitrepoCommand {
+    /// Create a local repo at PATH. Requires user-name and user-email.
+    Create {
+        /// Directory for the new repo. Must be empty or missing.
+        path: PathBuf,
+    },
 }
 
 /// Runs a CLI command and prints the result. Returns the process exit code.
@@ -47,34 +70,30 @@ pub fn run(cli: Cli) -> i32 {
             return 1;
         }
     };
-    let config = match config::load(&config_path) {
-        Ok(config) => config,
-        Err(err) => {
-            eprintln!("error: failed to read {}: {err}", config_path.display());
-            return 1;
-        }
-    };
 
     match cli.command {
         TopCommand::Cli { command } => match command {
-            CliCommand::Ping => dispatch(Action::Ping, &config),
+            CliCommand::Ping => dispatch(Action::Ping, &config_path),
             CliCommand::Config {
                 command: ConfigCommand::Show,
-            } => {
-                print_config(&config);
-                0
-            }
+            } => dispatch(Action::ConfigShow, &config_path),
+            CliCommand::Config {
+                command: ConfigCommand::Set { key, value },
+            } => dispatch(Action::ConfigSet { key, value }, &config_path),
+            CliCommand::Gitrepo {
+                command: GitrepoCommand::Create { path },
+            } => dispatch(Action::GitrepoCreate { path }, &config_path),
         },
     }
 }
 
-fn dispatch(action: Action, config: &Config) -> i32 {
+fn dispatch(action: Action, config_path: &std::path::Path) -> i32 {
     let response = protocol::handle(
         Request {
             id: "cli".into(),
             action,
         },
-        config,
+        config_path,
     );
     match serde_json::to_string_pretty(&response) {
         Ok(text) => println!("{text}"),
@@ -87,13 +106,6 @@ fn dispatch(action: Action, config: &Config) -> i32 {
         0
     } else {
         1
-    }
-}
-
-fn print_config(config: &Config) {
-    match toml::to_string_pretty(config) {
-        Ok(text) => print!("{text}"),
-        Err(err) => eprintln!("error: {err}"),
     }
 }
 
@@ -118,5 +130,17 @@ mod tests {
                 }
             }
         ));
+    }
+
+    #[test]
+    fn parses_config_set() {
+        let cli = Cli::try_parse_from(["boom", "cli", "config", "set", "user-name", "Alex"]);
+        assert!(cli.is_ok(), "{:?}", cli.err());
+    }
+
+    #[test]
+    fn parses_gitrepo_create() {
+        let cli = Cli::try_parse_from(["boom", "cli", "gitrepo", "create", "/tmp/bookmarks"]);
+        assert!(cli.is_ok(), "{:?}", cli.err());
     }
 }

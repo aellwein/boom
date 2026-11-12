@@ -7,6 +7,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 
 /// How to resolve a change that conflicts between machines.
@@ -45,6 +46,26 @@ impl Default for Config {
     }
 }
 
+/// Settings that can be changed with `config set`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ValueEnum)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfigKey {
+    UserName,
+    UserEmail,
+    RepoPath,
+}
+
+impl Config {
+    /// Sets one key from a string value.
+    pub fn set(&mut self, key: ConfigKey, value: String) {
+        match key {
+            ConfigKey::UserName => self.user_name = Some(value),
+            ConfigKey::UserEmail => self.user_email = Some(value),
+            ConfigKey::RepoPath => self.repo_path = Some(PathBuf::from(value)),
+        }
+    }
+}
+
 /// Returns `~/.config/boom/config.toml`. Used on all platforms.
 pub fn default_path() -> io::Result<PathBuf> {
     let home = dirs::home_dir()
@@ -61,6 +82,16 @@ pub fn load(path: &Path) -> io::Result<Config> {
         Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(Config::default()),
         Err(err) => Err(err),
     }
+}
+
+/// Writes the config to `path`, creating parent directories as needed.
+pub fn save(path: &Path, config: &Config) -> io::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let text =
+        toml::to_string(config).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+    fs::write(path, text)
 }
 
 #[cfg(test)]
@@ -86,5 +117,15 @@ mod tests {
         let text = toml::to_string(&config).unwrap();
         let parsed: Config = toml::from_str(&text).unwrap();
         assert_eq!(parsed, config);
+    }
+
+    #[test]
+    fn set_updates_the_matching_key() {
+        let mut config = Config::default();
+        config.set(ConfigKey::UserName, "Alex".into());
+        config.set(ConfigKey::RepoPath, "/tmp/bookmarks".into());
+        assert_eq!(config.user_name.as_deref(), Some("Alex"));
+        assert_eq!(config.repo_path, Some(PathBuf::from("/tmp/bookmarks")));
+        assert_eq!(config.user_email, None);
     }
 }
