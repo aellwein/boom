@@ -41,6 +41,7 @@ export type HostAction =
   | { action: "pull" }
   | { action: "repo_entries" }
   | { action: "repo_head" }
+  | { action: "repo_changes_since"; params: { since: string } }
   | { action: "write_browser_tree"; params: { tree: TreeNode[]; expected_head: string } }
   | { action: "sync" };
 
@@ -81,6 +82,14 @@ export interface RepoStatus {
   repo_path: string | null;
   origin_url: string | null;
 }
+
+/// One change from the repo at an older commit to the working tree, as
+/// `repo_changes_since` returns it. Paths use `/` and are repo-relative.
+export type RepoChange =
+  | { op: "remove_bookmark"; path: string }
+  | { op: "remove_folder"; path: string }
+  | { op: "create_folder"; path: string; parent: string | null; index: number; title: string }
+  | { op: "write_bookmark"; path: string; parent: string | null; index: number; title: string; url: string };
 
 /// Result of `write_browser_tree` and `repo_head`: the repo's HEAD commit.
 export interface HeadResult {

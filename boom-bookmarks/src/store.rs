@@ -23,6 +23,7 @@ pub enum Error {
     Io(io::Error),
     Parse { path: PathBuf, message: String },
     Encode(String),
+    Git(git2::Error),
 }
 
 impl fmt::Display for Error {
@@ -33,11 +34,18 @@ impl fmt::Display for Error {
                 write!(f, "cannot parse {}: {message}", path.display())
             }
             Error::Encode(message) => write!(f, "cannot encode bookmark: {message}"),
+            Error::Git(err) => write!(f, "{err}"),
         }
     }
 }
 
 impl std::error::Error for Error {}
+
+impl From<git2::Error> for Error {
+    fn from(err: git2::Error) -> Self {
+        Error::Git(err)
+    }
+}
 
 impl From<io::Error> for Error {
     fn from(err: io::Error) -> Self {
@@ -47,7 +55,7 @@ impl From<io::Error> for Error {
 
 /// On-disk form of a bookmark file.
 #[derive(Debug, Serialize, Deserialize)]
-struct BookmarkFile {
+pub(crate) struct BookmarkFile {
     title: String,
     url: String,
 }
@@ -96,14 +104,14 @@ fn has_bookmark_extension(name: &str) -> bool {
 }
 
 /// Numeric position prefix of an entry name, or `u64::MAX` when there is none.
-fn order_key(name: &str) -> u64 {
+pub(crate) fn order_key(name: &str) -> u64 {
     name.split_once('_')
         .and_then(|(digits, _)| digits.parse().ok())
         .unwrap_or(u64::MAX)
 }
 
 /// Removes the `NNNN_` position prefix from an entry name.
-fn strip_prefix(name: &str) -> &str {
+pub(crate) fn strip_prefix(name: &str) -> &str {
     match name.split_once('_') {
         Some((digits, rest)) if digits.parse::<u64>().is_ok() => rest,
         _ => name,
@@ -120,6 +128,61 @@ fn read_bookmark(path: &Path) -> Result<Bookmark, Error> {
         title: file.title,
         url: file.url,
     })
+}
+
+/// Reads the bookmark tree as it was in commit `commit_id` of the repo at `root`.
+///
+/// Same rules as `read_tree`, but read from git objects, so the working tree
+/// can be at a different commit. Folders with no bookmarks are not in git, so
+/// they do not appear here.
+pub fn read_tree_at_commit(root: &Path, commit_id: &str) -> Result<Vec<Node>, Error> {
+    let repo = git2::Repository::open(root)?;
+    let oid = git2::Oid::from_str(commit_id)?;
+    let tree = repo.find_commit(oid)?.tree()?;
+    read_git_tree(&repo, &tree)
+}
+
+fn read_git_tree(repo: &git2::Repository, tree: &git2::Tree) -> Result<Vec<Node>, Error> {
+    let mut entries: Vec<(u64, String, git2::Oid, bool)> = Vec::new();
+    for entry in tree.iter() {
+        let name = entry.name().unwrap_or_default().to_string();
+        if name == METADATA_FILE {
+            continue;
+        }
+        match entry.kind() {
+            Some(git2::ObjectType::Tree) => {
+                entries.push((order_key(&name), name, entry.id(), true));
+            }
+            Some(git2::ObjectType::Blob) if has_bookmark_extension(&name) => {
+                entries.push((order_key(&name), name, entry.id(), false));
+            }
+            _ => {}
+        }
+    }
+    entries.sort();
+
+    let mut nodes = Vec::with_capacity(entries.len());
+    for (_, name, id, is_dir) in entries {
+        if is_dir {
+            let subtree = repo.find_tree(id)?;
+            nodes.push(Node::Folder {
+                title: strip_prefix(&name).to_string(),
+                children: read_git_tree(repo, &subtree)?,
+            });
+        } else {
+            let blob = repo.find_blob(id)?;
+            let text = String::from_utf8_lossy(blob.content()).into_owned();
+            let file: BookmarkFile = toml::from_str(&text).map_err(|err| Error::Parse {
+                path: PathBuf::from(&name),
+                message: err.to_string(),
+            })?;
+            nodes.push(Node::Bookmark(Bookmark {
+                title: file.title,
+                url: file.url,
+            }));
+        }
+    }
+    Ok(nodes)
 }
 
 /// Applies planned changes to the working tree below `root`, in order.

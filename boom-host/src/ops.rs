@@ -123,6 +123,87 @@ pub fn write_browser_tree(
     git::head_id(repo_path).map_err(|err| err.to_string())
 }
 
+/// One step that brings the browser from the commit `since` to the working
+/// tree. Paths are repo paths with `/`. `index` is the position among the
+/// entry's siblings in the new tree, and `parent` is None at the top level.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "op", rename_all = "snake_case")]
+pub enum RepoChange {
+    RemoveBookmark {
+        path: String,
+    },
+    RemoveFolder {
+        path: String,
+    },
+    CreateFolder {
+        path: String,
+        parent: Option<String>,
+        index: usize,
+        title: String,
+    },
+    WriteBookmark {
+        path: String,
+        parent: Option<String>,
+        index: usize,
+        title: String,
+        url: String,
+    },
+}
+
+/// The changes that turn the repo at commit `since` into the working tree.
+pub fn repo_changes_since(config_path: &Path, since: &str) -> Result<Vec<RepoChange>, String> {
+    let config = config_show(config_path)?;
+    let repo_path = repo_path(&config)?;
+    let old =
+        boom_bookmarks::read_tree_at_commit(repo_path, since).map_err(|err| err.to_string())?;
+    let new = boom_bookmarks::read_tree(repo_path).map_err(|err| err.to_string())?;
+    let new_flat = boom_bookmarks::flatten(&new);
+
+    let mut changes = Vec::new();
+    for change in boom_bookmarks::plan(&old, &new) {
+        let entry = match change {
+            boom_bookmarks::Change::RemoveBookmark(path) => RepoChange::RemoveBookmark {
+                path: repo_relative(&path),
+            },
+            boom_bookmarks::Change::RemoveFolder(path) => RepoChange::RemoveFolder {
+                path: repo_relative(&path),
+            },
+            boom_bookmarks::Change::CreateFolder(path) => RepoChange::CreateFolder {
+                index: sibling_index(&new_flat, &path),
+                parent: parent_of(&path),
+                title: title_from_path(&path),
+                path: repo_relative(&path),
+            },
+            boom_bookmarks::Change::WriteBookmark { path, bookmark } => RepoChange::WriteBookmark {
+                index: sibling_index(&new_flat, &path),
+                parent: parent_of(&path),
+                title: bookmark.title,
+                url: bookmark.url,
+                path: repo_relative(&path),
+            },
+        };
+        changes.push(entry);
+    }
+    Ok(changes)
+}
+
+/// Repo path of the parent folder, or None for the top level.
+fn parent_of(path: &Path) -> Option<String> {
+    path.parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .map(repo_relative)
+}
+
+/// Position of `path` among its siblings in `flat`, in repo order.
+fn sibling_index(
+    flat: &std::collections::BTreeMap<PathBuf, boom_bookmarks::Entry>,
+    path: &Path,
+) -> usize {
+    flat.keys()
+        .filter(|other| other.parent() == path.parent() && other.as_path() < path)
+        .count()
+}
+
 /// Lists every folder and bookmark of the configured repo.
 pub fn repo_entries(config_path: &Path) -> Result<Vec<RepoEntry>, String> {
     let config = config_show(config_path)?;
@@ -520,6 +601,46 @@ mod tests {
             .join("0010_bookmarks-bar")
             .join("0010_Docs.toml")
             .exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn changes_since_a_commit_describe_the_new_bookmarks() {
+        let dir = temp_dir("changes_since");
+        let (config_path, _remote) = repo_with_remote(&dir);
+        let base = repo_head(&config_path).unwrap();
+
+        let repo = dir.join("bookmarks");
+        std::fs::create_dir_all(repo.join("0010_bookmarks-bar")).unwrap();
+        std::fs::write(
+            repo.join("0010_bookmarks-bar").join("0010_Docs.toml"),
+            "title = \"Docs\"\nurl = \"https://docs.example\"\n",
+        )
+        .unwrap();
+        boom_bookmarks::git::commit_all(&repo, "test: add docs", "John Doe", "john@example.com")
+            .unwrap();
+
+        let changes = repo_changes_since(&config_path, &base).unwrap();
+        // The root folder is new in git, so it is listed too. The browser
+        // side skips it, because the root is already mapped.
+        assert_eq!(
+            changes,
+            vec![
+                RepoChange::CreateFolder {
+                    path: "0010_bookmarks-bar".into(),
+                    parent: None,
+                    index: 0,
+                    title: "bookmarks-bar".into(),
+                },
+                RepoChange::WriteBookmark {
+                    path: "0010_bookmarks-bar/0010_Docs.toml".into(),
+                    parent: Some("0010_bookmarks-bar".into()),
+                    index: 0,
+                    title: "Docs".into(),
+                    url: "https://docs.example".into(),
+                },
+            ]
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

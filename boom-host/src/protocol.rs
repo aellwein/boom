@@ -40,6 +40,8 @@ pub enum Action {
     RepoEntries,
     /// Returns the commit id of the repo's HEAD.
     RepoHead,
+    /// Lists the changes from commit `since` to the working tree.
+    RepoChangesSince { since: String },
     /// Makes the repo match the browser tree, then commits and pushes.
     /// Refused unless HEAD is `expected_head`.
     WriteBrowserTree {
@@ -122,6 +124,10 @@ fn run(action: Action, config_path: &Path) -> Result<Value, String> {
             }))
         }
         Action::RepoHead => Ok(json!({ "head": ops::repo_head(config_path)? })),
+        Action::RepoChangesSince { since } => {
+            serde_json::to_value(ops::repo_changes_since(config_path, &since)?)
+                .map_err(|err| err.to_string())
+        }
         Action::WriteBrowserTree {
             tree,
             expected_head,

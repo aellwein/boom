@@ -3,6 +3,7 @@
 //! again on install, on browser start, and after the setup page saves.
 
 import { callHost } from "./host.js";
+import { applyRepoToBrowser } from "./repo-apply.js";
 import type { HostConfig, PullRecord, PullResult } from "./protocol.js";
 
 export const PULL_ALARM = "boom-pull";
@@ -57,12 +58,21 @@ export async function schedulePull(): Promise<void> {
   });
 }
 
-/// Runs one pull and records the outcome for the popup.
+/// Runs one pull, applies what it brought to the browser, and records the
+/// outcome for the popup.
 export async function runPull(): Promise<void> {
   const at = new Date().toISOString();
   try {
     const reply = await callHost<PullResult>({ action: "pull" });
     const record: PullRecord = { at, ok: reply.ok, result: reply.result, error: reply.error };
+    if (reply.ok) {
+      try {
+        await applyRepoToBrowser();
+      } catch (err) {
+        record.ok = false;
+        record.error = `applying to the browser failed: ${String(err)}`;
+      }
+    }
     await chrome.storage.local.set({ [LAST_PULL_KEY]: record });
   } catch (err) {
     const record: PullRecord = { at, ok: false, error: String(err) };
