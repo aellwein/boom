@@ -3,7 +3,10 @@
   "name": "boom",
   "version": "0.0.1",
   "description": "Sync browser bookmarks through a git repository.",
-  "permissions": ["nativeMessaging"],
+  "permissions": [
+    "nativeMessaging",
+    "bookmarks"
+  ],
   "background": {
     "service_worker": "background.js",
     "type": "module"

@@ -35,6 +35,17 @@ h1 {
   margin: 0 0 10px;
 }
 
+h2 {
+  font-size: 13px;
+  margin: 14px 0 6px;
+}
+
+ul {
+  font-size: 12px;
+  padding-left: 16px;
+  margin: 8px 0 0;
+}
+
 button {
   font: inherit;
   font-size: 13px;
