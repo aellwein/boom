@@ -12,7 +12,7 @@ keywords = ["bookmarks", "git", "sync"]
 categories = ["command-line-utilities"]
 
 [dependencies]
-git2 = "0.21.0"
+git2 = { version = "0.21.0", features = ["ssh", "https"] }
 serde = { version = "1.0.229", features = ["derive"] }
 toml = "1.2.1"
 
