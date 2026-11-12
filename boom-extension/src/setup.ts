@@ -2,9 +2,10 @@
 //! remembers the first-sync choice in extension storage.
 
 import { callHost } from "./host.js";
-import type { HostConfig } from "./protocol.js";
+import type { HostConfig, RepoStatus } from "./protocol.js";
 import {
   buildSetupActions,
+  initialRepoMode,
   validateSetup,
   type InitialSync,
   type RepoMode,
@@ -34,6 +35,13 @@ function setField(name: string, value: string | null): void {
   }
 }
 
+function selectRadio(name: string, value: string): void {
+  const radio = form.querySelector<HTMLInputElement>(`input[name="${name}"][value="${value}"]`);
+  if (radio) {
+    radio.checked = true;
+  }
+}
+
 async function load(): Promise<void> {
   try {
     const reply = await callHost<HostConfig>({ action: "config_show" });
@@ -46,14 +54,20 @@ async function load(): Promise<void> {
     hostStatus.textContent = "Connected to the boom host.";
   } catch (err) {
     hostStatus.textContent = `Host not reachable: ${String(err)}`;
+    return;
+  }
+
+  const status = await callHost<RepoStatus>({ action: "gitrepo_status" });
+  if (status.ok && status.result) {
+    setField("remoteUrl", status.result.origin_url);
+    selectRadio("repoMode", initialRepoMode(status.result.repo_path));
+  } else {
+    message.textContent = `Could not read the repo: ${status.error ?? "unknown error"}`;
   }
 
   const stored = await chrome.storage.local.get("initialSync");
   if (stored.initialSync === "merge" || stored.initialSync === "overwrite") {
-    const radio = form.querySelector<HTMLInputElement>(`input[value="${stored.initialSync}"]`);
-    if (radio) {
-      radio.checked = true;
-    }
+    selectRadio("initialSync", stored.initialSync);
   }
 }
 

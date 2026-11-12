@@ -1,7 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { buildSetupActions, validateSetup, type SetupForm } from "../setup-logic.js";
+import {
+  buildSetupActions,
+  initialRepoMode,
+  validateSetup,
+  type SetupForm,
+} from "../setup-logic.js";
 
 const valid: SetupForm = {
   userName: "Alex Ellwein",
@@ -72,3 +77,13 @@ test("existing mode without a remote does not touch the remote", () => {
   assert.equal(actions.length, 3);
   assert.equal(actions[2].action, "config_set");
 });
+
+test("preselects existing when a repo folder is configured", () => {
+  assert.equal(initialRepoMode("/Users/alex/git/bm"), "existing");
+});
+
+test("preselects create when no repo folder is configured", () => {
+  assert.equal(initialRepoMode(null), "create");
+  assert.equal(initialRepoMode(""), "create");
+});
+

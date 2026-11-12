@@ -34,6 +34,8 @@ pub enum Action {
     },
     /// Sets the URL of `origin` in the configured bookmark repo.
     GitrepoSetRemote { url: String },
+    /// Returns the configured repo path and its `origin` URL.
+    GitrepoStatus,
     /// Commits local changes in the bookmark repo, then pulls and pushes `origin`.
     Sync,
 }
@@ -99,6 +101,13 @@ fn run(action: Action, config_path: &Path) -> Result<Value, String> {
         Action::GitrepoCreate { path, remote } => {
             ops::gitrepo_create(config_path, &path, remote.as_deref())?;
             Ok(json!({ "path": path }))
+        }
+        Action::GitrepoStatus => {
+            let status = ops::gitrepo_status(config_path)?;
+            Ok(json!({
+                "repo_path": status.repo_path,
+                "origin_url": status.origin_url,
+            }))
         }
         Action::GitrepoSetRemote { url } => {
             ops::gitrepo_set_remote(config_path, &url)?;
@@ -365,6 +374,41 @@ mod tests {
         );
         assert!(!response.ok);
         assert!(response.error.unwrap().contains("gitrepo create"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn gitrepo_status_reports_origin_of_configured_repo() {
+        let dir = temp_path("status");
+        let path = dir.join("config.toml");
+        set_identity(&path);
+        let repo = dir.join("bookmarks");
+        let created = handle(
+            request(Action::GitrepoCreate {
+                path: repo.clone(),
+                remote: Some("https://example.invalid/bm.git".into()),
+            }),
+            &path,
+        );
+        assert!(created.ok, "{:?}", created.error);
+
+        let status = handle(request(Action::GitrepoStatus), &path);
+        assert!(status.ok, "{:?}", status.error);
+        let result = status.result.unwrap();
+        assert_eq!(result["origin_url"], "https://example.invalid/bm.git");
+        assert_eq!(result["repo_path"], repo.to_str().unwrap());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn gitrepo_status_without_repo_is_empty() {
+        let dir = temp_path("status_empty");
+        let path = dir.join("config.toml");
+        let status = handle(request(Action::GitrepoStatus), &path);
+        assert!(status.ok);
+        let result = status.result.unwrap();
+        assert!(result["repo_path"].is_null());
+        assert!(result["origin_url"].is_null());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

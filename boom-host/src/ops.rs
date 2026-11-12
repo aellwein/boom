@@ -4,7 +4,7 @@
 //! (JSON, for the browser) and the CLI (text, for people). Errors are plain
 //! messages, so either front end can show them as they are.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use boom_bookmarks::git::{self, Integration};
 
@@ -48,6 +48,29 @@ pub fn gitrepo_create(config_path: &Path, path: &Path, remote: Option<&str>) -> 
     }
     config.repo_path = Some(path.to_path_buf());
     config::save(config_path, &config).map_err(|err| err.to_string())
+}
+
+/// Where the bookmark repo is and what its `origin` points to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepoStatus {
+    pub repo_path: Option<PathBuf>,
+    pub origin_url: Option<String>,
+}
+
+/// Reads the configured repo path and its `origin` URL.
+pub fn gitrepo_status(config_path: &Path) -> Result<RepoStatus, String> {
+    let config = config_show(config_path)?;
+    let Some(path) = config.repo_path else {
+        return Ok(RepoStatus {
+            repo_path: None,
+            origin_url: None,
+        });
+    };
+    let origin_url = git::origin_url(&path).map_err(|err| err.to_string())?;
+    Ok(RepoStatus {
+        repo_path: Some(path),
+        origin_url,
+    })
 }
 
 /// Sets the `origin` URL of the bookmark repo, adding the remote if needed.

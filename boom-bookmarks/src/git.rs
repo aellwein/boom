@@ -178,6 +178,16 @@ pub fn has_origin(path: &Path) -> Result<bool, git2::Error> {
     Ok(found)
 }
 
+/// URL of `origin`, or `None` if the repo has no such remote.
+pub fn origin_url(path: &Path) -> Result<Option<String>, git2::Error> {
+    let repo = Repository::open(path)?;
+    let url = match repo.find_remote(REMOTE) {
+        Ok(remote) => remote.url().map(|url| Some(url.to_string()))?,
+        Err(_) => None,
+    };
+    Ok(url)
+}
+
 /// Sets the URL of `origin`, adding the remote if it does not exist yet.
 pub fn set_origin(path: &Path, url: &str) -> Result<(), git2::Error> {
     let repo = Repository::open(path)?;

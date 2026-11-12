@@ -22,6 +22,12 @@ export type SetupCheck =
   | { ok: true; form: SetupForm }
   | { ok: false; errors: string[] };
 
+/// Which repo option the page should preselect. A configured repo folder
+/// means the repo exists, so creating one there would fail.
+export function initialRepoMode(repoPath: string | null): RepoMode {
+  return repoPath === null || repoPath === "" ? "create" : "existing";
+}
+
 export function validateSetup(input: SetupForm): SetupCheck {
   const form: SetupForm = {
     userName: input.userName.trim(),

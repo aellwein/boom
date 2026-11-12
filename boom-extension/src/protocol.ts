@@ -35,6 +35,7 @@ export type HostAction =
   | { action: "config_set"; params: { key: ConfigKey; value: string } }
   | { action: "gitrepo_create"; params: { path: string; remote?: string } }
   | { action: "gitrepo_set_remote"; params: { url: string } }
+  | { action: "gitrepo_status" }
   | { action: "sync" };
 
 /// The host's config, as `config_show` returns it.
@@ -44,6 +45,12 @@ export interface HostConfig {
   repo_path: string | null;
   conflict_policy: string;
   poll_interval_secs: number;
+}
+
+/// The configured repo folder and its `origin` URL, as `gitrepo_status` returns them.
+export interface RepoStatus {
+  repo_path: string | null;
+  origin_url: string | null;
 }
 
 export function withId(id: string, action: HostAction): HostAction & { id: string } {
