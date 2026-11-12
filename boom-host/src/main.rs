@@ -8,6 +8,7 @@ mod cli;
 mod config;
 mod gitrepo;
 mod native;
+mod ops;
 mod protocol;
 
 use std::io::{self, Write};

@@ -1,21 +1,19 @@
-//! Request and response types exchanged with the browser extension.
+//! JSON request and response types for the browser extension.
 //!
 //! Each native messaging call is stateless: the extension sends one
 //! [`Request`] and reads one [`Response`]. The host reads the config and
-//! the repo from disk for every request.
+//! the repo from disk for every request. The operations themselves live in
+//! [`crate::ops`], which the CLI uses too.
 
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use boom_bookmarks::git::{self, Integration};
+use boom_bookmarks::git::Integration;
 
-use crate::config::{self, ConfigKey};
-use crate::gitrepo;
-
-/// Commit message for local changes that `sync` records before integrating.
-const SYNC_COMMIT_MESSAGE: &str = "sync: local changes";
+use crate::config::ConfigKey;
+use crate::ops::{self, SyncReport};
 
 /// One management or sync operation requested by the extension or the CLI.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -83,58 +81,30 @@ pub fn handle(request: Request, config_path: &Path) -> Response {
 
 fn run(action: Action, config_path: &Path) -> Result<Value, String> {
     match action {
-        Action::Ping => Ok(json!({ "version": env!("CARGO_PKG_VERSION") })),
+        Action::Ping => Ok(json!({ "version": ops::VERSION })),
         Action::ConfigShow => {
-            let config = config::load(config_path).map_err(|err| err.to_string())?;
-            serde_json::to_value(config).map_err(|err| err.to_string())
+            serde_json::to_value(ops::config_show(config_path)?).map_err(|err| err.to_string())
         }
         Action::ConfigSet { key, value } => {
-            let mut config = config::load(config_path).map_err(|err| err.to_string())?;
-            config.set(key, value.clone());
-            config::save(config_path, &config).map_err(|err| err.to_string())?;
+            ops::config_set(config_path, key, value.clone())?;
             Ok(json!({ "key": key, "value": value }))
         }
         Action::GitrepoCreate { path } => {
-            let mut config = config::load(config_path).map_err(|err| err.to_string())?;
-            let (name, email) = match (&config.user_name, &config.user_email) {
-                (Some(name), Some(email)) => (name.clone(), email.clone()),
-                _ => return Err("set user_name and user_email before creating a repo".to_string()),
-            };
-            gitrepo::create(&path, &name, &email)?;
-            config.repo_path = Some(path.clone());
-            config::save(config_path, &config).map_err(|err| err.to_string())?;
+            ops::gitrepo_create(config_path, &path)?;
             Ok(json!({ "path": path }))
         }
-        Action::Sync => {
-            let config = config::load(config_path).map_err(|err| err.to_string())?;
-            let (name, email) = match (&config.user_name, &config.user_email) {
-                (Some(name), Some(email)) => (name.as_str(), email.as_str()),
-                _ => return Err("set user_name and user_email before syncing".to_string()),
-            };
-            let repo_path = config
-                .repo_path
-                .as_deref()
-                .ok_or_else(|| "set repo_path before syncing".to_string())?;
-
-            // Local commit first. If the sync step fails, the commit stays and
-            // the next sync retries the integration.
-            let committed = git::commit_all(repo_path, SYNC_COMMIT_MESSAGE, name, email)
-                .map_err(|err| err.to_string())?
-                .is_some();
-            let outcome = git::sync(repo_path, name, email).map_err(|err| err.to_string())?;
-            Ok(sync_result(committed, outcome))
-        }
+        Action::Sync => Ok(sync_json(&ops::sync(config_path)?)),
     }
 }
 
-fn sync_result(committed: bool, outcome: Integration) -> Value {
-    let (integration, conflicts) = match outcome {
+fn sync_json(report: &SyncReport) -> Value {
+    let (integration, conflicts) = match report.integration {
         Integration::UpToDate => ("up_to_date", 0),
         Integration::FastForward => ("fast_forward", 0),
         Integration::Merged { conflicts } => ("merged", conflicts),
     };
     json!({
-        "committed": committed,
+        "committed": report.committed,
         "integration": integration,
         "conflicts": conflicts,
     })
@@ -254,7 +224,10 @@ mod tests {
         let created = handle(request(Action::GitrepoCreate { path: repo.clone() }), &path);
         assert!(created.ok, "{:?}", created.error);
         assert!(repo.join(".git").exists());
-        assert_eq!(config::load(&path).unwrap().repo_path, Some(repo.clone()));
+        assert_eq!(
+            crate::config::load(&path).unwrap().repo_path,
+            Some(repo.clone())
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

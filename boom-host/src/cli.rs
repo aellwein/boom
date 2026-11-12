@@ -4,8 +4,10 @@ use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 
+use boom_bookmarks::git::Integration;
+
 use crate::config::{self, ConfigKey};
-use crate::protocol::{self, Action, Request};
+use crate::ops::{self, SyncReport};
 
 #[derive(Debug, Parser)]
 #[command(name = "boom", version, about = "Git-backed bookmark sync")]
@@ -63,7 +65,7 @@ pub enum GitrepoCommand {
     },
 }
 
-/// Runs a CLI command and prints the result. Returns the process exit code.
+/// Runs a CLI command and prints the result for people. Returns the process exit code.
 pub fn run(cli: Cli) -> i32 {
     let config_path = match config::default_path() {
         Ok(path) => path,
@@ -73,30 +75,28 @@ pub fn run(cli: Cli) -> i32 {
         }
     };
 
-    match cli.command {
+    let result = match cli.command {
         TopCommand::Cli { command } => match command {
-            CliCommand::Ping => dispatch(Action::Ping, &config_path),
+            CliCommand::Ping => {
+                println!("boom {}", ops::VERSION);
+                Ok(())
+            }
             CliCommand::Config {
                 command: ConfigCommand::Show,
             } => show_config(&config_path),
             CliCommand::Config {
                 command: ConfigCommand::Set { key, value },
-            } => dispatch(Action::ConfigSet { key, value }, &config_path),
+            } => ops::config_set(&config_path, key, value).map(|()| println!("config updated")),
             CliCommand::Gitrepo {
                 command: GitrepoCommand::Create { path },
-            } => dispatch(Action::GitrepoCreate { path }, &config_path),
-            CliCommand::Sync => dispatch(Action::Sync, &config_path),
+            } => ops::gitrepo_create(&config_path, &path)
+                .map(|()| println!("created bookmark repo at {}", path.display())),
+            CliCommand::Sync => ops::sync(&config_path).map(|report| print_sync(&report)),
         },
-    }
-}
+    };
 
-/// Prints the config file as TOML, the same format it is stored in.
-fn show_config(config_path: &Path) -> i32 {
-    match config_as_toml(config_path) {
-        Ok(text) => {
-            print!("{text}");
-            0
-        }
+    match result {
+        Ok(()) => 0,
         Err(err) => {
             eprintln!("error: {err}");
             1
@@ -104,31 +104,32 @@ fn show_config(config_path: &Path) -> i32 {
     }
 }
 
+/// Prints the config file as TOML, the same format it is stored in.
+fn show_config(config_path: &Path) -> Result<(), String> {
+    print!("{}", config_as_toml(config_path)?);
+    Ok(())
+}
+
 fn config_as_toml(config_path: &Path) -> Result<String, String> {
-    let config = config::load(config_path).map_err(|err| err.to_string())?;
+    let config = ops::config_show(config_path)?;
     toml::to_string(&config).map_err(|err| err.to_string())
 }
 
-fn dispatch(action: Action, config_path: &Path) -> i32 {
-    let response = protocol::handle(
-        Request {
-            id: "cli".into(),
-            action,
-        },
-        config_path,
-    );
-    match serde_json::to_string_pretty(&response) {
-        Ok(text) => println!("{text}"),
-        Err(err) => {
-            eprintln!("error: {err}");
-            return 1;
+fn print_sync(report: &SyncReport) {
+    if report.committed {
+        println!("committed local changes");
+    } else {
+        println!("no local changes to commit");
+    }
+    match report.integration {
+        Integration::UpToDate => println!("up to date with origin"),
+        Integration::FastForward => println!("fast-forwarded to origin"),
+        Integration::Merged { conflicts: 0 } => println!("merged with origin"),
+        Integration::Merged { conflicts } => {
+            println!("merged with origin, {conflicts} conflict(s) resolved by last writer wins")
         }
     }
-    if response.ok {
-        0
-    } else {
-        1
-    }
+    println!("pushed to origin");
 }
 
 #[cfg(test)]
