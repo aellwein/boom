@@ -61,13 +61,13 @@ CI runs format, clippy and tests on Ubuntu, macOS and Windows (`.github/workflow
 
 ## Roadmap
 
-- Local git repo creation and config management (done)
-- Bookmark sync library: git reads and writes, state calculation
-- Browser extension for Chromium-based browsers
-- Periodic pull from the extension
-- Firefox support
-- GitHub repo creation
-- Windows and Linux packaging
+- [x] Local git repo creation and config management
+- [ ] Bookmark sync library: git reads and writes, state calculation
+- [ ] Browser extension for Chromium-based browsers
+- [ ] Periodic pull from the extension
+- [ ] Firefox support
+- [ ] GitHub repo creation
+- [ ] Windows and Linux packaging
 
 ## License
 
