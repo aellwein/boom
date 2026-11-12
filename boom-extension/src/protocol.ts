@@ -37,6 +37,7 @@ export type HostAction =
   | { action: "gitrepo_set_remote"; params: { url: string } }
   | { action: "gitrepo_status" }
   | { action: "pull" }
+  | { action: "repo_entries" }
   | { action: "sync" };
 
 /// The host's config, as `config_show` returns it.
@@ -60,6 +61,15 @@ export interface PullRecord {
   ok: boolean;
   result?: PullResult;
   error?: string;
+}
+
+/// One folder or bookmark of the repo, as `repo_entries` returns it.
+/// `path` is relative to the repo root, and entries come sorted by path.
+export interface RepoEntry {
+  path: string;
+  kind: "folder" | "bookmark";
+  title: string;
+  url: string | null;
 }
 
 /// The configured repo folder and its `origin` URL, as `gitrepo_status` returns them.

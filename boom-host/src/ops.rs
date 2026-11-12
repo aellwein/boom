@@ -7,6 +7,7 @@
 use std::path::{Path, PathBuf};
 
 use boom_bookmarks::git::{self, Integration};
+use serde::Serialize;
 
 use crate::config::{self, Config, ConfigKey};
 use crate::gitrepo;
@@ -48,6 +49,52 @@ pub fn gitrepo_create(config_path: &Path, path: &Path, remote: Option<&str>) -> 
     }
     config.repo_path = Some(path.to_path_buf());
     config::save(config_path, &config).map_err(|err| err.to_string())
+}
+
+/// One entry of the bookmark repo: a folder or a bookmark, with its path
+/// relative to the repo root. Entries come sorted by path.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RepoEntry {
+    pub path: String,
+    pub kind: &'static str,
+    pub title: String,
+    pub url: Option<String>,
+}
+
+/// Lists every folder and bookmark of the configured repo.
+pub fn repo_entries(config_path: &Path) -> Result<Vec<RepoEntry>, String> {
+    let config = config_show(config_path)?;
+    let repo_path = repo_path(&config)?;
+    let nodes = boom_bookmarks::read_tree(repo_path).map_err(|err| err.to_string())?;
+    Ok(boom_bookmarks::flatten(&nodes)
+        .into_iter()
+        .map(|(path, entry)| match entry {
+            boom_bookmarks::Entry::Folder => RepoEntry {
+                path: path.to_string_lossy().into_owned(),
+                kind: "folder",
+                title: title_from_path(&path),
+                url: None,
+            },
+            boom_bookmarks::Entry::Bookmark(bookmark) => RepoEntry {
+                path: path.to_string_lossy().into_owned(),
+                kind: "bookmark",
+                title: bookmark.title,
+                url: Some(bookmark.url),
+            },
+        })
+        .collect())
+}
+
+/// Folder title from its path: the last component without the position prefix.
+fn title_from_path(path: &Path) -> String {
+    let name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    match name.split_once('_') {
+        Some((digits, rest)) if digits.parse::<u64>().is_ok() => rest.to_string(),
+        _ => name,
+    }
 }
 
 /// Where the bookmark repo is and what its `origin` points to.
@@ -275,6 +322,32 @@ mod tests {
 
         assert_eq!(pull(&config_path).unwrap(), Integration::FastForward);
         assert!(dir.join("bookmarks").join("0010_Docs.toml").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn repo_entries_lists_folders_and_bookmarks_with_paths() {
+        let dir = temp_dir("repo_entries");
+        let config_path = dir.join("config.toml");
+        with_identity(&config_path);
+        let repo = dir.join("bookmarks");
+        gitrepo_create(&config_path, &repo, None).unwrap();
+        std::fs::create_dir_all(repo.join("0010_Work")).unwrap();
+        std::fs::write(
+            repo.join("0010_Work").join("0010_Docs.toml"),
+            "title = \"Docs\"\nurl = \"https://docs.example\"\n",
+        )
+        .unwrap();
+
+        let entries = repo_entries(&config_path).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].path, "0010_Work");
+        assert_eq!(entries[0].kind, "folder");
+        assert_eq!(entries[0].title, "Work");
+        assert_eq!(entries[1].path, "0010_Work/0010_Docs.toml");
+        assert_eq!(entries[1].kind, "bookmark");
+        assert_eq!(entries[1].title, "Docs");
+        assert_eq!(entries[1].url.as_deref(), Some("https://docs.example"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

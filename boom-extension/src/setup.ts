@@ -3,6 +3,7 @@
 
 import { callHost } from "./host.js";
 import { schedulePull } from "./schedule.js";
+import { overwriteFromRepo } from "./overwrite.js";
 import type { HostConfig, RepoStatus } from "./protocol.js";
 import {
   buildSetupActions,
@@ -16,6 +17,32 @@ import {
 const form = document.getElementById("setup-form") as HTMLFormElement;
 const hostStatus = document.getElementById("host-status") as HTMLParagraphElement;
 const message = document.getElementById("message") as HTMLParagraphElement;
+const overwriteButton = document.getElementById("overwrite") as HTMLButtonElement;
+
+/// The overwrite button is only usable when "Overwrite" is the chosen first sync.
+function updateOverwriteButton(): void {
+  const choice = String(new FormData(form).get("initialSync") ?? "");
+  overwriteButton.disabled = choice !== "overwrite";
+}
+
+async function overwrite(): Promise<void> {
+  const confirmed = window.confirm(
+    "This deletes every bookmark in this browser and replaces them with the repo's. Continue?",
+  );
+  if (!confirmed) {
+    return;
+  }
+  overwriteButton.disabled = true;
+  message.textContent = "Replacing browser bookmarks...";
+  try {
+    const report = await overwriteFromRepo();
+    message.textContent = `Replaced browser bookmarks: removed ${report.removed}, created ${report.created}.`;
+  } catch (err) {
+    message.textContent = `Overwrite stopped: ${String(err)}`;
+  } finally {
+    updateOverwriteButton();
+  }
+}
 
 function readForm(): SetupForm {
   const data = new FormData(form);
@@ -96,4 +123,8 @@ async function save(event: SubmitEvent): Promise<void> {
 form.addEventListener("submit", (event) => {
   void save(event);
 });
-void load();
+form.addEventListener("change", updateOverwriteButton);
+overwriteButton.addEventListener("click", () => {
+  void overwrite();
+});
+void load().then(updateOverwriteButton);

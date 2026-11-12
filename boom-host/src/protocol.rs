@@ -36,6 +36,8 @@ pub enum Action {
     GitrepoSetRemote { url: String },
     /// Returns the configured repo path and its `origin` URL.
     GitrepoStatus,
+    /// Lists every folder and bookmark in the configured repo.
+    RepoEntries,
     /// Commits local changes in the bookmark repo, then pulls and pushes `origin`.
     Sync,
     /// Fetches and merges `origin` without committing or pushing.
@@ -110,6 +112,9 @@ fn run(action: Action, config_path: &Path) -> Result<Value, String> {
                 "repo_path": status.repo_path,
                 "origin_url": status.origin_url,
             }))
+        }
+        Action::RepoEntries => {
+            serde_json::to_value(ops::repo_entries(config_path)?).map_err(|err| err.to_string())
         }
         Action::GitrepoSetRemote { url } => {
             ops::gitrepo_set_remote(config_path, &url)?;

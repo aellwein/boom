@@ -40,6 +40,15 @@
         </fieldset>
 
         <button id="save" type="submit">Save setup</button>
+
+        <fieldset>
+          <legend>Apply the repo to this browser</legend>
+          <p class="muted">
+            Deletes every bookmark in this browser and creates the repo's bookmarks in their place.
+            Only available with "Overwrite" selected above.
+          </p>
+          <button id="overwrite" type="button" disabled>Replace browser bookmarks with the repo's</button>
+        </fieldset>
       </form>
       <p id="message" role="status"></p>
     </main>
