@@ -1,0 +1,12 @@
+[package]
+name = "boom-bookmarks"
+description = "Git-backed bookmark sync library for boom"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../README.md"
+keywords = ["bookmarks", "git", "sync"]
+categories = ["command-line-utilities"]

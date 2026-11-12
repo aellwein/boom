@@ -1,0 +1,16 @@
+[package]
+name = "boom-host"
+description = "Native messaging host and CLI for boom, a git-backed bookmark manager"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../README.md"
+keywords = ["bookmarks", "git", "native-messaging"]
+categories = ["command-line-utilities"]
+
+[[bin]]
+name = "boom"
+path = "src/main.rs"

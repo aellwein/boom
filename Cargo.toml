@@ -1,0 +1,12 @@
+[workspace]
+resolver = "2"
+members = ["boom-bookmarks", "boom-host"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+license = "MIT"
+authors = ["Alex Ellwein"]
+repository = "https://github.com/aellwein/boom"
+homepage = "https://github.com/aellwein/boom"
+readme = "README.md"
