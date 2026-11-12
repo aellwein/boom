@@ -5,6 +5,7 @@
 import type { HostResponse, PingResult } from "./protocol.js";
 import { callHost } from "./host.js";
 import { PULL_ALARM, runPull, schedulePull } from "./schedule.js";
+import { scheduleBrowserWrite } from "./browser-write.js";
 import { convertBrowserTree } from "./browser-tree.js";
 import { summarize, type TreeNode, type TreeSummary } from "./model.js";
 
@@ -54,4 +55,11 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     void runPull();
   }
 });
+
+// Any bookmark change in the browser schedules a write to the repo.
+chrome.bookmarks.onCreated.addListener(() => scheduleBrowserWrite());
+chrome.bookmarks.onRemoved.addListener(() => scheduleBrowserWrite());
+chrome.bookmarks.onChanged.addListener(() => scheduleBrowserWrite());
+chrome.bookmarks.onMoved.addListener(() => scheduleBrowserWrite());
+chrome.bookmarks.onChildrenReordered.addListener(() => scheduleBrowserWrite());
 

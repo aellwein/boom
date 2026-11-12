@@ -3,6 +3,8 @@
 //! The host name must match `name` in the host manifest that the browser
 //! reads. Requests and responses are the JSON types of `boom-host`.
 
+import type { TreeNode } from "./model.js";
+
 export const HOST_NAME = "com.boom.host";
 
 export interface PingRequest {
@@ -38,6 +40,8 @@ export type HostAction =
   | { action: "gitrepo_status" }
   | { action: "pull" }
   | { action: "repo_entries" }
+  | { action: "repo_head" }
+  | { action: "write_browser_tree"; params: { tree: TreeNode[]; expected_head: string } }
   | { action: "sync" };
 
 /// The host's config, as `config_show` returns it.
@@ -76,6 +80,11 @@ export interface RepoEntry {
 export interface RepoStatus {
   repo_path: string | null;
   origin_url: string | null;
+}
+
+/// Result of `write_browser_tree` and `repo_head`: the repo's HEAD commit.
+export interface HeadResult {
+  head: string;
 }
 
 export function withId(id: string, action: HostAction): HostAction & { id: string } {

@@ -38,6 +38,14 @@ pub enum Action {
     GitrepoStatus,
     /// Lists every folder and bookmark in the configured repo.
     RepoEntries,
+    /// Returns the commit id of the repo's HEAD.
+    RepoHead,
+    /// Makes the repo match the browser tree, then commits and pushes.
+    /// Refused unless HEAD is `expected_head`.
+    WriteBrowserTree {
+        tree: Vec<boom_bookmarks::Node>,
+        expected_head: String,
+    },
     /// Commits local changes in the bookmark repo, then pulls and pushes `origin`.
     Sync,
     /// Fetches and merges `origin` without committing or pushing.
@@ -113,6 +121,13 @@ fn run(action: Action, config_path: &Path) -> Result<Value, String> {
                 "origin_url": status.origin_url,
             }))
         }
+        Action::RepoHead => Ok(json!({ "head": ops::repo_head(config_path)? })),
+        Action::WriteBrowserTree {
+            tree,
+            expected_head,
+        } => Ok(json!({
+            "head": ops::write_browser_tree(config_path, &tree, &expected_head)?,
+        })),
         Action::RepoEntries => {
             serde_json::to_value(ops::repo_entries(config_path)?).map_err(|err| err.to_string())
         }

@@ -180,6 +180,21 @@ pub fn is_clean(path: &Path) -> Result<bool, git2::Error> {
     Ok(statuses.is_empty())
 }
 
+/// Commit id of HEAD, as a hex string.
+pub fn head_id(path: &Path) -> Result<String, git2::Error> {
+    let repo = Repository::open(path)?;
+    let oid = repo.head()?.peel_to_commit()?.id();
+    Ok(oid.to_string())
+}
+
+/// Moves the current branch back to `oid` and resets the working tree to it.
+/// Only for undoing commits made in this call: it discards uncommitted changes.
+pub fn reset_hard(path: &Path, oid: &str) -> Result<(), git2::Error> {
+    let repo = Repository::open(path)?;
+    let object = repo.find_object(Oid::from_str(oid)?, None)?;
+    repo.reset(&object, git2::ResetType::Hard, None)
+}
+
 /// Returns true if the repo at `path` has an `origin` remote.
 pub fn has_origin(path: &Path) -> Result<bool, git2::Error> {
     let repo = Repository::open(path)?;

@@ -15,6 +15,9 @@ use crate::gitrepo;
 /// Version of the host, as set in `Cargo.toml`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// Commit message for bookmark changes made in the browser.
+const BROWSER_COMMIT_MESSAGE: &str = "browser: update bookmarks";
+
 /// Commit message for local changes that `sync` records before integrating.
 const SYNC_COMMIT_MESSAGE: &str = "sync: local changes";
 
@@ -59,6 +62,65 @@ pub struct RepoEntry {
     pub kind: &'static str,
     pub title: String,
     pub url: Option<String>,
+}
+
+/// The top-level folders a browser tree may be written to, and their order.
+pub const ROOT_FOLDER_NAMES: [&str; 3] = ["bookmarks-bar", "other", "mobile"];
+
+/// Commit id of the configured repo's HEAD.
+pub fn repo_head(config_path: &Path) -> Result<String, String> {
+    let config = config_show(config_path)?;
+    let repo_path = repo_path(&config)?;
+    git::head_id(repo_path).map_err(|err| err.to_string())
+}
+
+/// Makes the repo's bookmarks match `tree`, then commits and pushes.
+///
+/// `tree` holds the three browser roots as top-level folders named
+/// `bookmarks-bar`, `other` and `mobile`. The write is refused unless HEAD
+/// is `expected_head`, so changes made outside this browser are never
+/// overwritten. The push is not preceded by a merge: if origin has moved,
+/// the push fails and nothing is lost. Returns the new HEAD.
+pub fn write_browser_tree(
+    config_path: &Path,
+    tree: &[boom_bookmarks::Node],
+    expected_head: &str,
+) -> Result<String, String> {
+    let config = config_show(config_path)?;
+    let (name, email) =
+        identity(&config).map_err(|_| "set user_name and user_email before writing".to_string())?;
+    let repo_path = repo_path(&config)?;
+    require_origin(repo_path)?;
+
+    for node in tree {
+        let known = matches!(node, boom_bookmarks::Node::Folder { title, .. } if ROOT_FOLDER_NAMES.contains(&title.as_str()));
+        if !known {
+            return Err(
+                "browser tree must hold only the top-level folders bookmarks-bar, other and mobile"
+                    .to_string(),
+            );
+        }
+    }
+    if !git::is_clean(repo_path).map_err(|err| err.to_string())? {
+        return Err("the bookmark repo has uncommitted changes; run: boom cli sync".to_string());
+    }
+    let head = git::head_id(repo_path).map_err(|err| err.to_string())?;
+    if head != expected_head {
+        return Err("the repo changed outside this browser, so nothing was written".to_string());
+    }
+
+    let current = boom_bookmarks::read_tree(repo_path).map_err(|err| err.to_string())?;
+    let changes = boom_bookmarks::plan(&current, tree);
+    boom_bookmarks::apply(repo_path, &changes).map_err(|err| err.to_string())?;
+    git::commit_all(repo_path, BROWSER_COMMIT_MESSAGE, name, email)
+        .map_err(|err| err.to_string())?;
+    if let Err(err) = git::push(repo_path) {
+        // Undo this write, so HEAD is again the commit the browser last saw.
+        // The next write rebuilds the same change from the browser.
+        git::reset_hard(repo_path, expected_head).map_err(|reset| reset.to_string())?;
+        return Err(format!("push failed, the write was undone: {err}"));
+    }
+    git::head_id(repo_path).map_err(|err| err.to_string())
 }
 
 /// Lists every folder and bookmark of the configured repo.
@@ -348,6 +410,107 @@ mod tests {
         assert_eq!(entries[1].kind, "bookmark");
         assert_eq!(entries[1].title, "Docs");
         assert_eq!(entries[1].url.as_deref(), Some("https://docs.example"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn bookmark_node(title: &str, url: &str) -> boom_bookmarks::Node {
+        boom_bookmarks::Node::Bookmark(boom_bookmarks::Bookmark {
+            title: title.into(),
+            url: url.into(),
+        })
+    }
+
+    #[test]
+    fn write_refuses_a_stale_head() {
+        let dir = temp_dir("write_stale");
+        let (config_path, _remote) = repo_with_remote(&dir);
+        let tree = vec![boom_bookmarks::Node::Folder {
+            title: "bookmarks-bar".into(),
+            children: vec![bookmark_node("Docs", "https://docs.example")],
+        }];
+        let err = write_browser_tree(
+            &config_path,
+            &tree,
+            "0000000000000000000000000000000000000000",
+        )
+        .unwrap_err();
+        assert!(err.contains("changed outside"), "{err}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn write_commits_and_pushes_the_browser_tree() {
+        let dir = temp_dir("write_push");
+        let (config_path, remote) = repo_with_remote(&dir);
+        let head = repo_head(&config_path).unwrap();
+        let tree = vec![boom_bookmarks::Node::Folder {
+            title: "bookmarks-bar".into(),
+            children: vec![bookmark_node("Docs", "https://docs.example")],
+        }];
+
+        let new_head = write_browser_tree(&config_path, &tree, &head).unwrap();
+        assert_ne!(new_head, head);
+        assert!(dir
+            .join("bookmarks")
+            .join("0010_bookmarks-bar")
+            .join("0010_Docs.toml")
+            .exists());
+
+        let pushed = git2::Repository::open(&remote)
+            .unwrap()
+            .find_reference("refs/heads/main")
+            .unwrap()
+            .target()
+            .unwrap()
+            .to_string();
+        assert_eq!(pushed, new_head);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn write_rejects_unknown_top_level_folders() {
+        let dir = temp_dir("write_unknown");
+        let (config_path, _remote) = repo_with_remote(&dir);
+        let head = repo_head(&config_path).unwrap();
+        let tree = vec![boom_bookmarks::Node::Folder {
+            title: "Random".into(),
+            children: vec![],
+        }];
+        let err = write_browser_tree(&config_path, &tree, &head).unwrap_err();
+        assert!(err.contains("bookmarks-bar"), "{err}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn write_is_undone_when_the_push_fails() {
+        let dir = temp_dir("write_undo");
+        let (config_path, remote) = repo_with_remote(&dir);
+        let head = repo_head(&config_path).unwrap();
+
+        // Another clone pushes first, so this push will be rejected.
+        let other = dir.join("other");
+        git2::Repository::clone(remote.to_str().unwrap(), &other).unwrap();
+        std::fs::write(
+            other.join("0010_Other.toml"),
+            "title = \"O\"\nurl = \"https://o.example\"\n",
+        )
+        .unwrap();
+        boom_bookmarks::git::commit_all(&other, "other: add", "Other", "other@example.invalid")
+            .unwrap();
+        boom_bookmarks::git::push(&other).unwrap();
+
+        let tree = vec![boom_bookmarks::Node::Folder {
+            title: "bookmarks-bar".into(),
+            children: vec![bookmark_node("Docs", "https://docs.example")],
+        }];
+        let err = write_browser_tree(&config_path, &tree, &head).unwrap_err();
+        assert!(err.contains("write was undone"), "{err}");
+        assert_eq!(repo_head(&config_path).unwrap(), head);
+        assert!(!dir
+            .join("bookmarks")
+            .join("0010_bookmarks-bar")
+            .join("0010_Docs.toml")
+            .exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -4,12 +4,15 @@
 import type { BookmarksResult } from "./background.js";
 import type { HostResponse, PingResult, PullRecord } from "./protocol.js";
 import { describePull, LAST_PULL_KEY } from "./schedule.js";
+import { describeWrite, type WriteRecord } from "./browser-write.js";
+import { LAST_WRITE_KEY } from "./keys.js";
 
 const status = document.getElementById("status") as HTMLParagraphElement;
 const pingButton = document.getElementById("ping") as HTMLButtonElement;
 const bookmarksButton = document.getElementById("bookmarks") as HTMLButtonElement;
 const bookmarkList = document.getElementById("bookmark-list") as HTMLUListElement;
 const lastPull = document.getElementById("last-pull") as HTMLParagraphElement;
+const lastWrite = document.getElementById("last-write") as HTMLParagraphElement;
 
 async function checkHost(): Promise<void> {
   status.textContent = "Checking host...";
@@ -42,6 +45,12 @@ async function showLastPull(): Promise<void> {
   lastPull.textContent = record ? describePull(record) : "No pull has run yet.";
 }
 
+async function showLastWrite(): Promise<void> {
+  const stored = await chrome.storage.local.get(LAST_WRITE_KEY);
+  const record = stored[LAST_WRITE_KEY] as WriteRecord | undefined;
+  lastWrite.textContent = record ? describeWrite(record) : "No browser write has run yet.";
+}
+
 function addItem(text: string): void {
   const item = document.createElement("li");
   item.textContent = text;
@@ -51,9 +60,11 @@ function addItem(text: string): void {
 pingButton.addEventListener("click", () => {
   void checkHost();
 void showLastPull();
+void showLastWrite();
 });
 bookmarksButton.addEventListener("click", () => {
   void showBookmarks();
 });
 void checkHost();
 void showLastPull();
+void showLastWrite();
