@@ -191,3 +191,18 @@ fn merge_applies_remote_deletion_to_working_tree() {
         ]
     );
 }
+
+#[test]
+fn set_origin_adds_then_updates_remote() {
+    let dir = TempDir::new().unwrap();
+    init_repo(dir.path());
+    assert!(!git::has_origin(dir.path()).unwrap());
+
+    git::set_origin(dir.path(), "https://example.invalid/one.git").unwrap();
+    assert!(git::has_origin(dir.path()).unwrap());
+
+    git::set_origin(dir.path(), "https://example.invalid/two.git").unwrap();
+    let repo = Repository::open(dir.path()).unwrap();
+    let remote = repo.find_remote("origin").unwrap();
+    assert_eq!(remote.url().unwrap(), "https://example.invalid/two.git");
+}

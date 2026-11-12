@@ -171,6 +171,23 @@ pub fn integrate(
     Ok(Integration::Merged { conflicts: count })
 }
 
+/// Returns true if the repo at `path` has an `origin` remote.
+pub fn has_origin(path: &Path) -> Result<bool, git2::Error> {
+    let repo = Repository::open(path)?;
+    let found = repo.find_remote(REMOTE).is_ok();
+    Ok(found)
+}
+
+/// Sets the URL of `origin`, adding the remote if it does not exist yet.
+pub fn set_origin(path: &Path, url: &str) -> Result<(), git2::Error> {
+    let repo = Repository::open(path)?;
+    if has_origin(path)? {
+        repo.remote_set_url(REMOTE, url)
+    } else {
+        repo.remote(REMOTE, url).map(|_| ())
+    }
+}
+
 /// Pushes the current branch to `origin` under the same name.
 ///
 /// The push is rejected if the remote moved on, so call `integrate` first.

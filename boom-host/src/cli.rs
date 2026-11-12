@@ -62,6 +62,14 @@ pub enum GitrepoCommand {
     Create {
         /// Directory for the new repo. Must be empty or missing.
         path: PathBuf,
+        /// URL of the remote, set as `origin`.
+        #[arg(long)]
+        remote: Option<String>,
+    },
+    /// Set the URL of `origin` in the configured repo, adding it if missing.
+    SetRemote {
+        /// URL of the remote, e.g. git@github.com:you/bookmarks.git.
+        url: String,
     },
 }
 
@@ -88,9 +96,13 @@ pub fn run(cli: Cli) -> i32 {
                 command: ConfigCommand::Set { key, value },
             } => ops::config_set(&config_path, key, value).map(|()| println!("config updated")),
             CliCommand::Gitrepo {
-                command: GitrepoCommand::Create { path },
-            } => ops::gitrepo_create(&config_path, &path)
+                command: GitrepoCommand::Create { path, remote },
+            } => ops::gitrepo_create(&config_path, &path, remote.as_deref())
                 .map(|()| println!("created bookmark repo at {}", path.display())),
+            CliCommand::Gitrepo {
+                command: GitrepoCommand::SetRemote { url },
+            } => ops::gitrepo_set_remote(&config_path, &url)
+                .map(|()| println!("origin set to {url}")),
             CliCommand::Sync => ops::sync(&config_path).map(|report| print_sync(&report)),
         },
     };
@@ -189,5 +201,31 @@ mod tests {
         let parsed: config::Config = toml::from_str(&text).unwrap();
         assert_eq!(parsed, config);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn parses_gitrepo_create_with_remote() {
+        let cli = Cli::try_parse_from([
+            "boom",
+            "cli",
+            "gitrepo",
+            "create",
+            "/tmp/bookmarks",
+            "--remote",
+            "git@example.com:me/bookmarks.git",
+        ]);
+        assert!(cli.is_ok(), "{:?}", cli.err());
+    }
+
+    #[test]
+    fn parses_gitrepo_set_remote() {
+        let cli = Cli::try_parse_from([
+            "boom",
+            "cli",
+            "gitrepo",
+            "set-remote",
+            "git@example.com:me/bookmarks.git",
+        ]);
+        assert!(cli.is_ok(), "{:?}", cli.err());
     }
 }

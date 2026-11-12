@@ -90,7 +90,7 @@ fn run(action: Action, config_path: &Path) -> Result<Value, String> {
             Ok(json!({ "key": key, "value": value }))
         }
         Action::GitrepoCreate { path } => {
-            ops::gitrepo_create(config_path, &path)?;
+            ops::gitrepo_create(config_path, &path, None)?;
             Ok(json!({ "path": path }))
         }
         Action::Sync => Ok(sync_json(&ops::sync(config_path)?)),
