@@ -1,0 +1,28 @@
+version: 2
+updates:
+  # Rust crates of the workspace (boom-bookmarks, boom-host).
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      rust-minor-and-patch:
+        update-types: [minor, patch]
+
+  # Node packages of the browser extension.
+  - package-ecosystem: npm
+    directory: /boom-extension
+    schedule:
+      interval: weekly
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+
+  # Action versions used in .github/workflows.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
