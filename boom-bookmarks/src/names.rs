@@ -30,7 +30,7 @@ pub fn prefix(position: usize) -> String {
 ///
 /// Characters that are invalid in paths are replaced with `-`, whitespace is
 /// collapsed, leading dots and trailing spaces are removed, and the result is
-/// capped at [`MAX_NAME_CHARS`] characters.
+/// capped at `MAX_NAME_CHARS` characters.
 pub fn sanitize(title: &str) -> String {
     let mapped: String = title
         .chars()
