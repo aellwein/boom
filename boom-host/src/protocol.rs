@@ -26,7 +26,14 @@ pub enum Action {
     /// Sets one config key.
     ConfigSet { key: ConfigKey, value: String },
     /// Creates a local bookmark repo at `path` and records it in the config.
-    GitrepoCreate { path: PathBuf },
+    /// `remote`, if given, is set as `origin`.
+    GitrepoCreate {
+        path: PathBuf,
+        #[serde(default)]
+        remote: Option<String>,
+    },
+    /// Sets the URL of `origin` in the configured bookmark repo.
+    GitrepoSetRemote { url: String },
     /// Commits local changes in the bookmark repo, then pulls and pushes `origin`.
     Sync,
 }
@@ -89,9 +96,13 @@ fn run(action: Action, config_path: &Path) -> Result<Value, String> {
             ops::config_set(config_path, key, value.clone())?;
             Ok(json!({ "key": key, "value": value }))
         }
-        Action::GitrepoCreate { path } => {
-            ops::gitrepo_create(config_path, &path, None)?;
+        Action::GitrepoCreate { path, remote } => {
+            ops::gitrepo_create(config_path, &path, remote.as_deref())?;
             Ok(json!({ "path": path }))
+        }
+        Action::GitrepoSetRemote { url } => {
+            ops::gitrepo_set_remote(config_path, &url)?;
+            Ok(json!({ "url": url }))
         }
         Action::Sync => Ok(sync_json(&ops::sync(config_path)?)),
     }
@@ -193,6 +204,7 @@ mod tests {
         let response = handle(
             request(Action::GitrepoCreate {
                 path: dir.join("bookmarks"),
+                remote: None,
             }),
             &dir.join("config.toml"),
         );
@@ -221,7 +233,13 @@ mod tests {
             assert!(set.ok);
         }
 
-        let created = handle(request(Action::GitrepoCreate { path: repo.clone() }), &path);
+        let created = handle(
+            request(Action::GitrepoCreate {
+                path: repo.clone(),
+                remote: None,
+            }),
+            &path,
+        );
         assert!(created.ok, "{:?}", created.error);
         assert!(repo.join(".git").exists());
         assert_eq!(
@@ -267,7 +285,13 @@ mod tests {
         let remote = dir.join("remote.git");
         set_identity(&path);
 
-        let created = handle(request(Action::GitrepoCreate { path: repo.clone() }), &path);
+        let created = handle(
+            request(Action::GitrepoCreate {
+                path: repo.clone(),
+                remote: None,
+            }),
+            &path,
+        );
         assert!(created.ok, "{:?}", created.error);
 
         git2::Repository::init_opts(
@@ -311,6 +335,36 @@ mod tests {
             .unwrap()
             .get_name("0010_Docs.toml")
             .is_some());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn parses_gitrepo_create_without_remote() {
+        let request: Request = serde_json::from_str(
+            r#"{"id":"3","action":"gitrepo_create","params":{"path":"/tmp/x"}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            request.action,
+            Action::GitrepoCreate {
+                path: PathBuf::from("/tmp/x"),
+                remote: None
+            }
+        );
+    }
+
+    #[test]
+    fn gitrepo_set_remote_needs_repo_path() {
+        let dir = temp_path("set_remote");
+        let path = dir.join("config.toml");
+        let response = handle(
+            request(Action::GitrepoSetRemote {
+                url: "https://example.invalid/x.git".into(),
+            }),
+            &path,
+        );
+        assert!(!response.ok);
+        assert!(response.error.unwrap().contains("gitrepo create"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

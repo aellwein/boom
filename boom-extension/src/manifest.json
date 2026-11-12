@@ -5,7 +5,8 @@
   "description": "Sync browser bookmarks through a git repository.",
   "permissions": [
     "nativeMessaging",
-    "bookmarks"
+    "bookmarks",
+    "storage"
   ],
   "background": {
     "service_worker": "background.js",

@@ -1,0 +1,64 @@
+body.setup {
+  width: auto;
+  min-width: 360px;
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+body.setup main {
+  padding: 24px 16px;
+}
+
+body.setup h1 {
+  font-size: 22px;
+  margin-bottom: 4px;
+}
+
+.muted {
+  color: #6b7280;
+  font-size: 13px;
+}
+
+fieldset {
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  margin: 16px 0;
+  padding: 12px;
+}
+
+legend {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0 4px;
+}
+
+label {
+  display: block;
+  font-size: 13px;
+  margin: 8px 0;
+}
+
+label.choice {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+input[type="text"],
+input[type="email"] {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 4px;
+  padding: 6px 8px;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid #9ca3af;
+  border-radius: 6px;
+}
+
+#message {
+  font-size: 13px;
+  min-height: 1.4em;
+}

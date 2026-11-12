@@ -2,8 +2,8 @@
 //! tree. The bookmark request is read-only; nothing is written to the
 //! browser or the repo yet.
 
-import { parseResponse, pingRequest, type HostResponse, type PingResult } from "./protocol.js";
-import { sendToHost } from "./host.js";
+import type { HostResponse, PingResult } from "./protocol.js";
+import { callHost } from "./host.js";
 import { convertBrowserTree } from "./browser-tree.js";
 import { summarize, type TreeNode, type TreeSummary } from "./model.js";
 
@@ -12,16 +12,13 @@ export interface BookmarksResult {
   roots: { title: string; summary: TreeSummary; tree: TreeNode }[];
 }
 
-let nextId = 0;
-
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
   const type = (message as { type?: unknown } | null)?.type;
   if (type === "ping") {
-    const id = String(++nextId);
-    sendToHost(pingRequest(id))
-      .then((raw) => sendResponse(parseResponse<PingResult>(raw, id)))
+    callHost<PingResult>({ action: "ping" })
+      .then((reply) => sendResponse(reply))
       .catch((err: unknown) => {
-        const failure: HostResponse = { id, ok: false, error: String(err) };
+        const failure: HostResponse = { id: "", ok: false, error: String(err) };
         sendResponse(failure);
       });
     // Returning true keeps the message channel open for the async reply.

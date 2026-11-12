@@ -3,7 +3,7 @@
 import { copyFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
-const assets = ["manifest.json", "popup.html", "popup.css"];
+const assets = ["manifest.json", "popup.html", "popup.css", "setup.html", "setup.css"];
 const root = new URL("..", import.meta.url).pathname;
 
 await mkdir(join(root, "dist"), { recursive: true });

@@ -56,3 +56,8 @@ button {
   background: var(--accent);
   cursor: pointer;
 }
+
+#setup {
+  font-size: 13px;
+  color: var(--accent);
+}

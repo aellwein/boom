@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>boom setup</title>
+    <link rel="stylesheet" href="popup.css" />
+    <link rel="stylesheet" href="setup.css" />
+  </head>
+  <body class="setup">
+    <main>
+      <h1>Set up boom</h1>
+      <p id="host-status" class="muted">Connecting to the boom host...</p>
+
+      <form id="setup-form" novalidate>
+        <fieldset>
+          <legend>Commits</legend>
+          <label>Name <input name="userName" type="text" autocomplete="name" /></label>
+          <label>Email <input name="userEmail" type="email" autocomplete="email" /></label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Bookmark repo</legend>
+          <label>Folder <input name="repoPath" type="text" placeholder="/Users/you/bookmarks" /></label>
+          <label class="choice"><input name="repoMode" type="radio" value="create" checked /> Create a new repo here</label>
+          <label class="choice"><input name="repoMode" type="radio" value="existing" /> Use the existing repo here</label>
+          <label>Remote URL (optional) <input name="remoteUrl" type="text" placeholder="git@host:you/bookmarks.git" /></label>
+        </fieldset>
+
+        <fieldset>
+          <legend>First sync</legend>
+          <label class="choice">
+            <input name="initialSync" type="radio" value="merge" checked />
+            Merge: keep browser bookmarks and repo bookmarks, newest version wins on conflicts
+          </label>
+          <label class="choice">
+            <input name="initialSync" type="radio" value="overwrite" />
+            Overwrite: the repo replaces the browser's bookmarks
+          </label>
+        </fieldset>
+
+        <button id="save" type="submit">Save setup</button>
+      </form>
+      <p id="message" role="status"></p>
+    </main>
+    <script type="module" src="setup.js"></script>
+  </body>
+</html>

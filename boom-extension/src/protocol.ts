@@ -25,6 +25,31 @@ export function pingRequest(id: string): PingRequest {
   return { id, action: "ping" };
 }
 
+export type ConfigKey = "user_name" | "user_email" | "repo_path";
+
+/// Every action the host accepts, with its params. Kept in step with the
+/// `Action` enum in `boom-host/src/protocol.rs`.
+export type HostAction =
+  | { action: "ping" }
+  | { action: "config_show" }
+  | { action: "config_set"; params: { key: ConfigKey; value: string } }
+  | { action: "gitrepo_create"; params: { path: string; remote?: string } }
+  | { action: "gitrepo_set_remote"; params: { url: string } }
+  | { action: "sync" };
+
+/// The host's config, as `config_show` returns it.
+export interface HostConfig {
+  user_name: string | null;
+  user_email: string | null;
+  repo_path: string | null;
+  conflict_policy: string;
+  poll_interval_secs: number;
+}
+
+export function withId(id: string, action: HostAction): HostAction & { id: string } {
+  return { id, ...action };
+}
+
 /// Checks that a raw reply from the host has the expected shape and id.
 /// Throws if it does not, so a broken host never looks like a success.
 export function parseResponse<T>(raw: unknown, expectedId: string): HostResponse<T> {
