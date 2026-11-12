@@ -16,6 +16,7 @@ name = "boom"
 path = "src/main.rs"
 
 [dependencies]
+boom-bookmarks = { path = "../boom-bookmarks" }
 clap = { version = "4.6.7", features = ["derive"] }
 dirs = "7.0.0"
 git2 = "0.21.0"

@@ -9,8 +9,13 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use boom_bookmarks::git::{self, Integration};
+
 use crate::config::{self, ConfigKey};
 use crate::gitrepo;
+
+/// Commit message for local changes that `sync` records before integrating.
+const SYNC_COMMIT_MESSAGE: &str = "sync: local changes";
 
 /// One management or sync operation requested by the extension or the CLI.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -24,6 +29,8 @@ pub enum Action {
     ConfigSet { key: ConfigKey, value: String },
     /// Creates a local bookmark repo at `path` and records it in the config.
     GitrepoCreate { path: PathBuf },
+    /// Commits local changes in the bookmark repo, then pulls and pushes `origin`.
+    Sync,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -98,7 +105,39 @@ fn run(action: Action, config_path: &Path) -> Result<Value, String> {
             config::save(config_path, &config).map_err(|err| err.to_string())?;
             Ok(json!({ "path": path }))
         }
+        Action::Sync => {
+            let config = config::load(config_path).map_err(|err| err.to_string())?;
+            let (name, email) = match (&config.user_name, &config.user_email) {
+                (Some(name), Some(email)) => (name.as_str(), email.as_str()),
+                _ => return Err("set user_name and user_email before syncing".to_string()),
+            };
+            let repo_path = config
+                .repo_path
+                .as_deref()
+                .ok_or_else(|| "set repo_path before syncing".to_string())?;
+
+            // Local commit first. If the sync step fails, the commit stays and
+            // the next sync retries the integration.
+            let committed = git::commit_all(repo_path, SYNC_COMMIT_MESSAGE, name, email)
+                .map_err(|err| err.to_string())?
+                .is_some();
+            let outcome = git::sync(repo_path, name, email).map_err(|err| err.to_string())?;
+            Ok(sync_result(committed, outcome))
+        }
     }
+}
+
+fn sync_result(committed: bool, outcome: Integration) -> Value {
+    let (integration, conflicts) = match outcome {
+        Integration::UpToDate => ("up_to_date", 0),
+        Integration::FastForward => ("fast_forward", 0),
+        Integration::Merged { conflicts } => ("merged", conflicts),
+    };
+    json!({
+        "committed": committed,
+        "integration": integration,
+        "conflicts": conflicts,
+    })
 }
 
 #[cfg(test)]
@@ -216,6 +255,89 @@ mod tests {
         assert!(created.ok, "{:?}", created.error);
         assert!(repo.join(".git").exists());
         assert_eq!(config::load(&path).unwrap().repo_path, Some(repo.clone()));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn set_identity(path: &Path) {
+        for (key, value) in [
+            (ConfigKey::UserName, "Alex"),
+            (ConfigKey::UserEmail, "alex@example.com"),
+        ] {
+            let set = handle(
+                request(Action::ConfigSet {
+                    key,
+                    value: value.into(),
+                }),
+                path,
+            );
+            assert!(set.ok);
+        }
+    }
+
+    #[test]
+    fn sync_requires_repo_path() {
+        let dir = temp_path("sync_no_repo");
+        let path = dir.join("config.toml");
+        set_identity(&path);
+
+        let response = handle(request(Action::Sync), &path);
+        assert!(!response.ok);
+        assert!(response.error.unwrap().contains("repo_path"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn sync_commits_and_pushes_to_origin() {
+        let dir = temp_path("sync_push");
+        let path = dir.join("config.toml");
+        let repo = dir.join("bookmarks");
+        let remote = dir.join("remote.git");
+        set_identity(&path);
+
+        let created = handle(request(Action::GitrepoCreate { path: repo.clone() }), &path);
+        assert!(created.ok, "{:?}", created.error);
+
+        git2::Repository::init_opts(
+            &remote,
+            git2::RepositoryInitOptions::new()
+                .bare(true)
+                .initial_head("main"),
+        )
+        .unwrap();
+        git2::Repository::open(&repo)
+            .unwrap()
+            .remote("origin", remote.to_str().unwrap())
+            .unwrap();
+
+        // First sync: nothing new to commit, remote has no branch yet, so it is created.
+        let first = handle(request(Action::Sync), &path);
+        assert!(first.ok, "{:?}", first.error);
+        let first = first.result.unwrap();
+        assert_eq!(first["committed"], false);
+        assert_eq!(first["integration"], "up_to_date");
+
+        // A new bookmark file is committed and pushed.
+        std::fs::write(
+            repo.join("0010_Docs.toml"),
+            "title = \"Docs\"\nurl = \"https://docs.example\"\n",
+        )
+        .unwrap();
+        let second = handle(request(Action::Sync), &path);
+        assert!(second.ok, "{:?}", second.error);
+        assert_eq!(second.result.unwrap()["committed"], true);
+
+        let remote_repo = git2::Repository::open(&remote).unwrap();
+        let remote_head = remote_repo
+            .find_reference("refs/heads/main")
+            .unwrap()
+            .peel_to_commit()
+            .unwrap();
+        assert_eq!(remote_head.message().unwrap(), "sync: local changes");
+        assert!(remote_head
+            .tree()
+            .unwrap()
+            .get_name("0010_Docs.toml")
+            .is_some());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

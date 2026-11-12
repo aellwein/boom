@@ -37,6 +37,8 @@ pub enum CliCommand {
         #[command(subcommand)]
         command: GitrepoCommand,
     },
+    /// Commit local changes, then pull and push the bookmark repo.
+    Sync,
 }
 
 #[derive(Debug, Subcommand)]
@@ -83,6 +85,7 @@ pub fn run(cli: Cli) -> i32 {
             CliCommand::Gitrepo {
                 command: GitrepoCommand::Create { path },
             } => dispatch(Action::GitrepoCreate { path }, &config_path),
+            CliCommand::Sync => dispatch(Action::Sync, &config_path),
         },
     }
 }
@@ -141,6 +144,12 @@ mod tests {
     #[test]
     fn parses_gitrepo_create() {
         let cli = Cli::try_parse_from(["boom", "cli", "gitrepo", "create", "/tmp/bookmarks"]);
+        assert!(cli.is_ok(), "{:?}", cli.err());
+    }
+
+    #[test]
+    fn parses_sync() {
+        let cli = Cli::try_parse_from(["boom", "cli", "sync"]);
         assert!(cli.is_ok(), "{:?}", cli.err());
     }
 }

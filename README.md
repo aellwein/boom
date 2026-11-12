@@ -30,9 +30,12 @@ boom cli config set user-name "John Doe"
 boom cli config set user-email "alex@example.com"
 boom cli config set repo-path /path/to/repo
 boom cli gitrepo create /path/to/new/repo
+boom cli sync
 ```
 
 `gitrepo create` needs `user-name` and `user-email` set first. It creates a local repo on branch `main` with a root `.metadata` file and an initial commit. It refuses a directory that is not empty.
+
+`sync` commits local changes in the repo, then fetches, merges and pushes `origin` on the current branch. It needs `user-name`, `user-email` and `repo-path` set, and an `origin` remote configured in the repo.
 
 ## Platforms
 
