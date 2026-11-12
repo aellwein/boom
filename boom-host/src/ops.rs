@@ -132,8 +132,8 @@ mod tests {
     }
 
     fn with_identity(config_path: &Path) {
-        config_set(config_path, ConfigKey::UserName, "Alex".into()).unwrap();
-        config_set(config_path, ConfigKey::UserEmail, "alex@example.com".into()).unwrap();
+        config_set(config_path, ConfigKey::UserName, "John".into()).unwrap();
+        config_set(config_path, ConfigKey::UserEmail, "john@example.com".into()).unwrap();
     }
 
     #[test]

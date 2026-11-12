@@ -47,7 +47,7 @@ pub enum CliCommand {
 pub enum ConfigCommand {
     /// Print the current config as TOML.
     Show,
-    /// Set one config key, e.g. `config set user-name "Alex"`.
+    /// Set one config key, e.g. `config set user-name "John"`.
     Set {
         /// Key to change.
         key: ConfigKey,
@@ -169,7 +169,7 @@ mod tests {
 
     #[test]
     fn parses_config_set() {
-        let cli = Cli::try_parse_from(["boom", "cli", "config", "set", "user-name", "Alex"]);
+        let cli = Cli::try_parse_from(["boom", "cli", "config", "set", "user-name", "John"]);
         assert!(cli.is_ok(), "{:?}", cli.err());
     }
 
@@ -191,7 +191,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let path = dir.join("config.toml");
         let config = config::Config {
-            user_name: Some("Alex".into()),
+            user_name: Some("John".into()),
             ..Default::default()
         };
         config::save(&path, &config).unwrap();

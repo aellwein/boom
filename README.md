@@ -27,7 +27,7 @@ Changes will flow both ways. A bookmark created in the browser is committed and 
 boom cli ping
 boom cli config show
 boom cli config set user-name "John Doe"
-boom cli config set user-email "alex@example.com"
+boom cli config set user-email "john@example.com"
 boom cli config set repo-path /path/to/repo
 boom cli gitrepo create /path/to/new/repo --remote git@github.com:you/bookmarks.git
 boom cli gitrepo set-remote git@github.com:you/bookmarks.git

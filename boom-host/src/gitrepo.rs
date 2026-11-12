@@ -66,14 +66,14 @@ mod tests {
     #[test]
     fn creates_repo_with_metadata_commit() {
         let dir = temp_dir("create");
-        create(&dir, "Alex", "alex@example.com").unwrap();
+        create(&dir, "John", "john@example.com").unwrap();
 
         let repo = git2::Repository::open(&dir).unwrap();
         let head = repo.head().unwrap();
         assert_eq!(head.shorthand().unwrap(), "main");
         let commit = head.peel_to_commit().unwrap();
         assert_eq!(commit.message().unwrap(), "boom: initialize bookmark repo");
-        assert_eq!(commit.author().name().unwrap(), "Alex");
+        assert_eq!(commit.author().name().unwrap(), "John");
         assert!(commit.tree().unwrap().get_name(METADATA_FILE).is_some());
         assert_eq!(
             fs::read_to_string(dir.join(METADATA_FILE)).unwrap(),
@@ -89,7 +89,7 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("keep.txt"), "x").unwrap();
 
-        assert!(create(&dir, "Alex", "alex@example.com").is_err());
+        assert!(create(&dir, "John", "john@example.com").is_err());
         assert!(!dir.join(".git").exists());
 
         let _ = fs::remove_dir_all(&dir);

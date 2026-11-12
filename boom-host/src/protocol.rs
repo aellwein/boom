@@ -158,14 +158,14 @@ mod tests {
     #[test]
     fn parses_config_set_request() {
         let request: Request = serde_json::from_str(
-            r#"{"id":"2","action":"config_set","params":{"key":"user_name","value":"Alex"}}"#,
+            r#"{"id":"2","action":"config_set","params":{"key":"user_name","value":"John"}}"#,
         )
         .unwrap();
         assert_eq!(
             request.action,
             Action::ConfigSet {
                 key: ConfigKey::UserName,
-                value: "Alex".into()
+                value: "John".into()
             }
         );
     }
@@ -196,14 +196,14 @@ mod tests {
         let set = handle(
             request(Action::ConfigSet {
                 key: ConfigKey::UserEmail,
-                value: "alex@example.com".into(),
+                value: "john@example.com".into(),
             }),
             &path,
         );
         assert!(set.ok);
 
         let show = handle(request(Action::ConfigShow), &path);
-        assert_eq!(show.result.unwrap()["user_email"], "alex@example.com");
+        assert_eq!(show.result.unwrap()["user_email"], "john@example.com");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -229,8 +229,8 @@ mod tests {
         let repo = dir.join("bookmarks");
 
         for (key, value) in [
-            (ConfigKey::UserName, "Alex"),
-            (ConfigKey::UserEmail, "alex@example.com"),
+            (ConfigKey::UserName, "John"),
+            (ConfigKey::UserEmail, "john@example.com"),
         ] {
             let set = handle(
                 request(Action::ConfigSet {
@@ -260,8 +260,8 @@ mod tests {
 
     fn set_identity(path: &Path) {
         for (key, value) in [
-            (ConfigKey::UserName, "Alex"),
-            (ConfigKey::UserEmail, "alex@example.com"),
+            (ConfigKey::UserName, "John"),
+            (ConfigKey::UserEmail, "john@example.com"),
         ] {
             let set = handle(
                 request(Action::ConfigSet {

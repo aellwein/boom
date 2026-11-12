@@ -108,9 +108,9 @@ mod tests {
     #[test]
     fn round_trips_toml() {
         let config = Config {
-            user_name: Some("Alex Ellwein".into()),
-            user_email: Some("alex@example.com".into()),
-            repo_path: Some(PathBuf::from("/home/alex/bookmarks")),
+            user_name: Some("John Doe".into()),
+            user_email: Some("john@example.com".into()),
+            repo_path: Some(PathBuf::from("/home/john/bookmarks")),
             conflict_policy: ConflictPolicy::LastWriterWins,
             poll_interval_secs: 120,
         };
@@ -122,9 +122,9 @@ mod tests {
     #[test]
     fn set_updates_the_matching_key() {
         let mut config = Config::default();
-        config.set(ConfigKey::UserName, "Alex".into());
+        config.set(ConfigKey::UserName, "John".into());
         config.set(ConfigKey::RepoPath, "/tmp/bookmarks".into());
-        assert_eq!(config.user_name.as_deref(), Some("Alex"));
+        assert_eq!(config.user_name.as_deref(), Some("John"));
         assert_eq!(config.repo_path, Some(PathBuf::from("/tmp/bookmarks")));
         assert_eq!(config.user_email, None);
     }
