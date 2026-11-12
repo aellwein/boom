@@ -132,19 +132,28 @@ pub fn repo_entries(config_path: &Path) -> Result<Vec<RepoEntry>, String> {
         .into_iter()
         .map(|(path, entry)| match entry {
             boom_bookmarks::Entry::Folder => RepoEntry {
-                path: path.to_string_lossy().into_owned(),
+                path: repo_relative(&path),
                 kind: "folder",
                 title: title_from_path(&path),
                 url: None,
             },
             boom_bookmarks::Entry::Bookmark(bookmark) => RepoEntry {
-                path: path.to_string_lossy().into_owned(),
+                path: repo_relative(&path),
                 kind: "bookmark",
                 title: bookmark.title,
                 url: Some(bookmark.url),
             },
         })
         .collect())
+}
+
+/// A repo path with `/` between components, on every platform. The
+/// extension splits paths on `/`, so Windows separators must not leak out.
+fn repo_relative(path: &Path) -> String {
+    path.components()
+        .map(|component| component.as_os_str().to_string_lossy().into_owned())
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 /// Folder title from its path: the last component without the position prefix.
