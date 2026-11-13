@@ -7,10 +7,9 @@
 
 use std::path::{Path, PathBuf};
 
+use boom_bookmarks::git::Integration;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-
-use boom_bookmarks::git::Integration;
 
 use crate::config::ConfigKey;
 use crate::ops::{self, SyncReport};
@@ -168,12 +167,19 @@ fn integration_fields(integration: Integration) -> (&'static str, usize) {
 
 #[cfg(test)]
 mod tests {
+    use std::env;
+    use std::fs;
+    use std::process;
+
+    use git2::Repository;
+    use git2::RepositoryInitOptions;
+
     use super::*;
 
     fn temp_path(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("boom-proto-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = env::temp_dir().join(format!("boom-proto-{name}-{}", process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
         dir
     }
 
@@ -221,7 +227,7 @@ mod tests {
             response.result.unwrap()["version"],
             env!("CARGO_PKG_VERSION")
         );
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -240,7 +246,7 @@ mod tests {
 
         let show = handle(request(Action::ConfigShow), &path);
         assert_eq!(show.result.unwrap()["user_email"], "john@example.com");
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -255,7 +261,7 @@ mod tests {
         );
         assert!(!response.ok);
         assert!(response.error.unwrap().contains("user_name"));
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -291,7 +297,7 @@ mod tests {
             crate::config::load(&path).unwrap().repo_path,
             Some(repo.clone())
         );
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     fn set_identity(path: &Path) {
@@ -319,7 +325,7 @@ mod tests {
         let response = handle(request(Action::Sync), &path);
         assert!(!response.ok);
         assert!(response.error.unwrap().contains("repo_path"));
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -339,14 +345,12 @@ mod tests {
         );
         assert!(created.ok, "{:?}", created.error);
 
-        git2::Repository::init_opts(
+        Repository::init_opts(
             &remote,
-            git2::RepositoryInitOptions::new()
-                .bare(true)
-                .initial_head("main"),
+            RepositoryInitOptions::new().bare(true).initial_head("main"),
         )
         .unwrap();
-        git2::Repository::open(&repo)
+        Repository::open(&repo)
             .unwrap()
             .remote("origin", remote.to_str().unwrap())
             .unwrap();
@@ -359,7 +363,7 @@ mod tests {
         assert_eq!(first["integration"], "up_to_date");
 
         // A new bookmark file is committed and pushed.
-        std::fs::write(
+        fs::write(
             repo.join("0010_Docs.toml"),
             "title = \"Docs\"\nurl = \"https://docs.example\"\n",
         )
@@ -368,7 +372,7 @@ mod tests {
         assert!(second.ok, "{:?}", second.error);
         assert_eq!(second.result.unwrap()["committed"], true);
 
-        let remote_repo = git2::Repository::open(&remote).unwrap();
+        let remote_repo = Repository::open(&remote).unwrap();
         let remote_head = remote_repo
             .find_reference("refs/heads/main")
             .unwrap()
@@ -380,7 +384,7 @@ mod tests {
             .unwrap()
             .get_name("0010_Docs.toml")
             .is_some());
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -410,7 +414,7 @@ mod tests {
         );
         assert!(!response.ok);
         assert!(response.error.unwrap().contains("gitrepo create"));
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -433,7 +437,7 @@ mod tests {
         let result = status.result.unwrap();
         assert_eq!(result["origin_url"], "https://example.invalid/bm.git");
         assert_eq!(result["repo_path"], repo.to_str().unwrap());
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -445,7 +449,7 @@ mod tests {
         let result = status.result.unwrap();
         assert!(result["repo_path"].is_null());
         assert!(result["origin_url"].is_null());
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -454,6 +458,6 @@ mod tests {
         let path = dir.join("config.toml");
         let response = handle(request(Action::Pull), &path);
         assert!(!response.ok);
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&dir);
     }
 }

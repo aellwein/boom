@@ -2,9 +2,8 @@
 
 use std::path::{Path, PathBuf};
 
-use clap::{Parser, Subcommand};
-
 use boom_bookmarks::git::Integration;
+use clap::{Parser, Subcommand};
 
 use crate::config::{self, ConfigKey};
 use crate::ops::{self, SyncReport};
@@ -153,8 +152,13 @@ fn print_sync(report: &SyncReport) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::env;
+    use std::fs;
+    use std::process;
+
     use clap::CommandFactory;
+
+    use super::*;
 
     #[test]
     fn cli_definition_is_valid() {
@@ -194,8 +198,8 @@ mod tests {
 
     #[test]
     fn config_show_prints_stored_config_as_toml() {
-        let dir = std::env::temp_dir().join(format!("boom-cli-show-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+        let dir = env::temp_dir().join(format!("boom-cli-show-{}", process::id()));
+        let _ = fs::remove_dir_all(&dir);
         let path = dir.join("config.toml");
         let config = config::Config {
             user_name: Some("John".into()),
@@ -207,7 +211,7 @@ mod tests {
         assert!(!text.trim_start().starts_with('{'), "not TOML: {text}");
         let parsed: config::Config = toml::from_str(&text).unwrap();
         assert_eq!(parsed, config);
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

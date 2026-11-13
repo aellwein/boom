@@ -3,6 +3,7 @@
 use std::fs;
 use std::path::Path;
 
+use git2::Repository;
 use git2::{IndexAddOption, RepositoryInitOptions, Signature};
 
 /// Root file that holds shared settings. It is not a bookmark.
@@ -27,7 +28,7 @@ pub fn create(path: &Path, user_name: &str, user_email: &str) -> Result<(), Stri
 
     let mut options = RepositoryInitOptions::new();
     options.initial_head("main");
-    let repo = git2::Repository::init_opts(path, &options).map_err(|err| err.to_string())?;
+    let repo = Repository::init_opts(path, &options).map_err(|err| err.to_string())?;
 
     fs::write(path.join(METADATA_FILE), INITIAL_METADATA).map_err(|err| err.to_string())?;
 
@@ -54,11 +55,16 @@ pub fn create(path: &Path, user_name: &str, user_email: &str) -> Result<(), Stri
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::env;
     use std::path::PathBuf;
+    use std::process;
+
+    use git2::Repository;
+
+    use super::*;
 
     fn temp_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("boom-test-{name}-{}", std::process::id()));
+        let dir = env::temp_dir().join(format!("boom-test-{name}-{}", process::id()));
         let _ = fs::remove_dir_all(&dir);
         dir
     }
@@ -68,7 +74,7 @@ mod tests {
         let dir = temp_dir("create");
         create(&dir, "John", "john@example.com").unwrap();
 
-        let repo = git2::Repository::open(&dir).unwrap();
+        let repo = Repository::open(&dir).unwrap();
         let head = repo.head().unwrap();
         assert_eq!(head.shorthand().unwrap(), "main");
         let commit = head.peel_to_commit().unwrap();

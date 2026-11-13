@@ -4,12 +4,14 @@
 //! use last writer wins per file: for each conflicting file, the side whose
 //! latest commit is newer wins. Ties go to the local side.
 
+use std::fs;
 use std::path::Path;
+use std::str;
 
 use git2::build::CheckoutBuilder;
 use git2::{
-    Cred, CredentialType, Delta, Direction, FetchOptions, IndexAddOption, Oid, PushOptions,
-    RemoteCallbacks, Repository, Signature, StatusOptions,
+    Cred, CredentialType, Delta, Direction, Error, ErrorCode, FetchOptions, IndexAddOption, Oid,
+    PushOptions, RemoteCallbacks, Repository, ResetType, Signature, StatusOptions,
 };
 
 const REMOTE: &str = "origin";
@@ -37,7 +39,7 @@ pub fn commit_all(
     message: &str,
     user_name: &str,
     user_email: &str,
-) -> Result<Option<Oid>, git2::Error> {
+) -> Result<Option<Oid>, Error> {
     let repo = Repository::open(path)?;
     let mut index = repo.index()?;
     index.add_all(["*"], IndexAddOption::DEFAULT, None)?;
@@ -49,7 +51,7 @@ pub fn commit_all(
 
     let parent = match repo.head() {
         Ok(head) => Some(head.peel_to_commit()?),
-        Err(err) if err.code() == git2::ErrorCode::UnbornBranch => None,
+        Err(err) if err.code() == ErrorCode::UnbornBranch => None,
         Err(err) => return Err(err),
     };
     if let Some(parent) = &parent {
@@ -76,11 +78,7 @@ pub fn commit_all(
 /// The working tree must be clean: commit local changes first. A diverged
 /// branch is merged, and conflicting files take the version from the side
 /// with the newer commit. The merge commit is written, but not pushed.
-pub fn integrate(
-    path: &Path,
-    user_name: &str,
-    user_email: &str,
-) -> Result<Integration, git2::Error> {
+pub fn integrate(path: &Path, user_name: &str, user_email: &str) -> Result<Integration, Error> {
     let repo = Repository::open(path)?;
     let branch = current_branch(&repo)?;
 
@@ -155,7 +153,7 @@ pub fn integrate(
     let diff = repo.diff_tree_to_tree(Some(&local_tree), Some(&merged_tree), None)?;
     let workdir = repo
         .workdir()
-        .ok_or_else(|| git2::Error::from_str("repository has no working directory"))?
+        .ok_or_else(|| Error::from_str("repository has no working directory"))?
         .to_path_buf();
     for delta in diff.deltas() {
         if delta.status() == Delta::Deleted {
@@ -172,7 +170,7 @@ pub fn integrate(
 }
 
 /// True if the repo at `path` has no uncommitted or untracked changes.
-pub fn is_clean(path: &Path) -> Result<bool, git2::Error> {
+pub fn is_clean(path: &Path) -> Result<bool, Error> {
     let repo = Repository::open(path)?;
     let mut options = StatusOptions::new();
     options.include_untracked(true);
@@ -181,7 +179,7 @@ pub fn is_clean(path: &Path) -> Result<bool, git2::Error> {
 }
 
 /// Commit id of HEAD, as a hex string.
-pub fn head_id(path: &Path) -> Result<String, git2::Error> {
+pub fn head_id(path: &Path) -> Result<String, Error> {
     let repo = Repository::open(path)?;
     let oid = repo.head()?.peel_to_commit()?.id();
     Ok(oid.to_string())
@@ -189,21 +187,21 @@ pub fn head_id(path: &Path) -> Result<String, git2::Error> {
 
 /// Moves the current branch back to `oid` and resets the working tree to it.
 /// Only for undoing commits made in this call: it discards uncommitted changes.
-pub fn reset_hard(path: &Path, oid: &str) -> Result<(), git2::Error> {
+pub fn reset_hard(path: &Path, oid: &str) -> Result<(), Error> {
     let repo = Repository::open(path)?;
     let object = repo.find_object(Oid::from_str(oid)?, None)?;
-    repo.reset(&object, git2::ResetType::Hard, None)
+    repo.reset(&object, ResetType::Hard, None)
 }
 
 /// Returns true if the repo at `path` has an `origin` remote.
-pub fn has_origin(path: &Path) -> Result<bool, git2::Error> {
+pub fn has_origin(path: &Path) -> Result<bool, Error> {
     let repo = Repository::open(path)?;
     let found = repo.find_remote(REMOTE).is_ok();
     Ok(found)
 }
 
 /// URL of `origin`, or `None` if the repo has no such remote.
-pub fn origin_url(path: &Path) -> Result<Option<String>, git2::Error> {
+pub fn origin_url(path: &Path) -> Result<Option<String>, Error> {
     let repo = Repository::open(path)?;
     let url = match repo.find_remote(REMOTE) {
         Ok(remote) => remote.url().map(|url| Some(url.to_string()))?,
@@ -213,7 +211,7 @@ pub fn origin_url(path: &Path) -> Result<Option<String>, git2::Error> {
 }
 
 /// Sets the URL of `origin`, adding the remote if it does not exist yet.
-pub fn set_origin(path: &Path, url: &str) -> Result<(), git2::Error> {
+pub fn set_origin(path: &Path, url: &str) -> Result<(), Error> {
     let repo = Repository::open(path)?;
     if has_origin(path)? {
         repo.remote_set_url(REMOTE, url)
@@ -225,7 +223,7 @@ pub fn set_origin(path: &Path, url: &str) -> Result<(), git2::Error> {
 /// Pushes the current branch to `origin` under the same name.
 ///
 /// The push is rejected if the remote moved on, so call `integrate` first.
-pub fn push(path: &Path) -> Result<(), git2::Error> {
+pub fn push(path: &Path) -> Result<(), Error> {
     let repo = Repository::open(path)?;
     let branch = current_branch(&repo)?;
     let oid = repo.head()?.peel_to_commit()?.id();
@@ -246,23 +244,23 @@ pub fn push(path: &Path) -> Result<(), git2::Error> {
 }
 
 /// Integrates with the remote, then pushes.
-pub fn sync(path: &Path, user_name: &str, user_email: &str) -> Result<Integration, git2::Error> {
+pub fn sync(path: &Path, user_name: &str, user_email: &str) -> Result<Integration, Error> {
     let outcome = integrate(path, user_name, user_email)?;
     push(path)?;
     Ok(outcome)
 }
 
-fn current_branch(repo: &Repository) -> Result<String, git2::Error> {
+fn current_branch(repo: &Repository) -> Result<String, Error> {
     let head = repo.head()?;
     let name = head
         .shorthand()
-        .map_err(|_| git2::Error::from_str("HEAD is not a valid branch name"))?;
+        .map_err(|_| Error::from_str("HEAD is not a valid branch name"))?;
     Ok(name.to_string())
 }
 
 /// Fetches `branch` from `origin`. Returns the remote commit, or `None` if
 /// the remote has no such branch.
-fn fetch_branch(repo: &Repository, branch: &str) -> Result<Option<Oid>, git2::Error> {
+fn fetch_branch(repo: &Repository, branch: &str) -> Result<Option<Oid>, Error> {
     let mut remote = repo.find_remote(REMOTE)?;
     let wanted = format!("refs/heads/{branch}");
     remote.connect_auth(Direction::Fetch, Some(callbacks()), None)?;
@@ -282,20 +280,20 @@ fn fetch_branch(repo: &Repository, branch: &str) -> Result<Option<Oid>, git2::Er
 
 /// Removes a file below `workdir`, then its parent directories while they are empty.
 fn remove_file_and_empty_parents(workdir: &Path, relative: &Path) {
-    let _ = std::fs::remove_file(workdir.join(relative));
+    let _ = fs::remove_file(workdir.join(relative));
     let mut parent = relative.parent();
     while let Some(dir) = parent {
-        if dir.as_os_str().is_empty() || std::fs::remove_dir(workdir.join(dir)).is_err() {
+        if dir.as_os_str().is_empty() || fs::remove_dir(workdir.join(dir)).is_err() {
             break;
         }
         parent = dir.parent();
     }
 }
 
-fn path_to_str(bytes: &[u8]) -> Result<String, git2::Error> {
-    std::str::from_utf8(bytes)
+fn path_to_str(bytes: &[u8]) -> Result<String, Error> {
+    str::from_utf8(bytes)
         .map(str::to_string)
-        .map_err(|_| git2::Error::from_str("conflicting path is not UTF-8"))
+        .map_err(|_| Error::from_str("conflicting path is not UTF-8"))
 }
 
 fn callbacks<'a>() -> RemoteCallbacks<'a> {
