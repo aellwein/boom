@@ -3,7 +3,7 @@
 use std::fs;
 use std::path::Path;
 
-use boom_bookmarks::{apply, git, plan, read_tree, Bookmark, Node};
+use boom_bookmarks::{Bookmark, Node, apply, git, plan, read_tree};
 use git2::Repository;
 use git2::RepositoryInitOptions;
 
@@ -98,10 +98,11 @@ fn commit_all_commits_once_and_skips_unchanged_tree() {
     let repo = Repository::open(dir.path()).unwrap();
     let head = repo.head().unwrap().peel_to_commit().unwrap();
     assert_eq!(head.message().unwrap(), "sync: remove");
-    assert!(head
-        .tree()
-        .unwrap()
-        .get_name("0010_Rust Book.toml")
-        .is_none());
+    assert!(
+        head.tree()
+            .unwrap()
+            .get_name("0010_Rust Book.toml")
+            .is_none()
+    );
     assert!(Path::new(dir.path()).join(".metadata").exists());
 }

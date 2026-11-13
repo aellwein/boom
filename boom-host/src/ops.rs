@@ -393,10 +393,12 @@ mod tests {
         gitrepo_create(&config_path, &dir.join("bookmarks"), remote.to_str()).unwrap();
         let report = sync(&config_path).unwrap();
         assert_eq!(report.integration, Integration::UpToDate);
-        assert!(Repository::open(&remote)
-            .unwrap()
-            .find_reference("refs/heads/main")
-            .is_ok());
+        assert!(
+            Repository::open(&remote)
+                .unwrap()
+                .find_reference("refs/heads/main")
+                .is_ok()
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 
@@ -539,11 +541,12 @@ mod tests {
 
         let new_head = write_browser_tree(&config_path, &tree, &head).unwrap();
         assert_ne!(new_head, head);
-        assert!(dir
-            .join("bookmarks")
-            .join("0010_bookmarks-bar")
-            .join("0010_Docs.toml")
-            .exists());
+        assert!(
+            dir.join("bookmarks")
+                .join("0010_bookmarks-bar")
+                .join("0010_Docs.toml")
+                .exists()
+        );
 
         let pushed = Repository::open(&remote)
             .unwrap()
@@ -594,11 +597,12 @@ mod tests {
         let err = write_browser_tree(&config_path, &tree, &head).unwrap_err();
         assert!(err.contains("write was undone"), "{err}");
         assert_eq!(repo_head(&config_path).unwrap(), head);
-        assert!(!dir
-            .join("bookmarks")
-            .join("0010_bookmarks-bar")
-            .join("0010_Docs.toml")
-            .exists());
+        assert!(
+            !dir.join("bookmarks")
+                .join("0010_bookmarks-bar")
+                .join("0010_Docs.toml")
+                .exists()
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 

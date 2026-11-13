@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use crate::model::{Bookmark, Node};
-use crate::names::{sibling_names, BOOKMARK_EXTENSION};
+use crate::names::{BOOKMARK_EXTENSION, sibling_names};
 
 /// What lives at a path.
 #[derive(Debug, Clone, PartialEq, Eq)]

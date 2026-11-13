@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use boom_bookmarks::git::Integration;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::config::ConfigKey;
 use crate::ops::{self, SyncReport};
@@ -379,11 +379,13 @@ mod tests {
             .peel_to_commit()
             .unwrap();
         assert_eq!(remote_head.message().unwrap(), "sync: local changes");
-        assert!(remote_head
-            .tree()
-            .unwrap()
-            .get_name("0010_Docs.toml")
-            .is_some());
+        assert!(
+            remote_head
+                .tree()
+                .unwrap()
+                .get_name("0010_Docs.toml")
+                .is_some()
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 

@@ -6,7 +6,7 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use boom_bookmarks::git::{self, Integration};
-use boom_bookmarks::{apply, plan, read_tree, Bookmark, Node};
+use boom_bookmarks::{Bookmark, Node, apply, plan, read_tree};
 use git2::{Repository, RepositoryInitOptions};
 use tempfile::TempDir;
 

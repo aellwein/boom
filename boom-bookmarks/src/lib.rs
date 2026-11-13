@@ -12,5 +12,5 @@ pub mod plan;
 pub mod store;
 
 pub use model::{Bookmark, Node};
-pub use plan::{flatten, plan, Change, Entry};
+pub use plan::{Change, Entry, flatten, plan};
 pub use store::{apply, read_tree, read_tree_at_commit};
