@@ -4,9 +4,11 @@
 //! (JSON, for the browser) and the CLI (text, for people). Errors are plain
 //! messages, so either front end can show them as they are.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use boom_bookmarks::git::{self, Integration};
+use boom_bookmarks::{Change, Entry, Node};
 use serde::Serialize;
 
 use crate::config::{self, Config, ConfigKey};
@@ -93,7 +95,7 @@ pub fn write_browser_tree(
     require_origin(repo_path)?;
 
     for node in tree {
-        let known = matches!(node, boom_bookmarks::Node::Folder { title, .. } if ROOT_FOLDER_NAMES.contains(&title.as_str()));
+        let known = matches!(node, Node::Folder { title, .. } if ROOT_FOLDER_NAMES.contains(&title.as_str()));
         if !known {
             return Err(
                 "browser tree must hold only the top-level folders bookmarks-bar, other and mobile"
@@ -162,19 +164,19 @@ pub fn repo_changes_since(config_path: &Path, since: &str) -> Result<Vec<RepoCha
     let mut changes = Vec::new();
     for change in boom_bookmarks::plan(&old, &new) {
         let entry = match change {
-            boom_bookmarks::Change::RemoveBookmark(path) => RepoChange::RemoveBookmark {
+            Change::RemoveBookmark(path) => RepoChange::RemoveBookmark {
                 path: repo_relative(&path),
             },
-            boom_bookmarks::Change::RemoveFolder(path) => RepoChange::RemoveFolder {
+            Change::RemoveFolder(path) => RepoChange::RemoveFolder {
                 path: repo_relative(&path),
             },
-            boom_bookmarks::Change::CreateFolder(path) => RepoChange::CreateFolder {
+            Change::CreateFolder(path) => RepoChange::CreateFolder {
                 index: sibling_index(&new_flat, &path),
                 parent: parent_of(&path),
                 title: title_from_path(&path),
                 path: repo_relative(&path),
             },
-            boom_bookmarks::Change::WriteBookmark { path, bookmark } => RepoChange::WriteBookmark {
+            Change::WriteBookmark { path, bookmark } => RepoChange::WriteBookmark {
                 index: sibling_index(&new_flat, &path),
                 parent: parent_of(&path),
                 title: bookmark.title,
@@ -195,10 +197,7 @@ fn parent_of(path: &Path) -> Option<String> {
 }
 
 /// Position of `path` among its siblings in `flat`, in repo order.
-fn sibling_index(
-    flat: &std::collections::BTreeMap<PathBuf, boom_bookmarks::Entry>,
-    path: &Path,
-) -> usize {
+fn sibling_index(flat: &BTreeMap<PathBuf, boom_bookmarks::Entry>, path: &Path) -> usize {
     flat.keys()
         .filter(|other| other.parent() == path.parent() && other.as_path() < path)
         .count()
@@ -212,13 +211,13 @@ pub fn repo_entries(config_path: &Path) -> Result<Vec<RepoEntry>, String> {
     Ok(boom_bookmarks::flatten(&nodes)
         .into_iter()
         .map(|(path, entry)| match entry {
-            boom_bookmarks::Entry::Folder => RepoEntry {
+            Entry::Folder => RepoEntry {
                 path: repo_relative(&path),
                 kind: "folder",
                 title: title_from_path(&path),
                 url: None,
             },
-            boom_bookmarks::Entry::Bookmark(bookmark) => RepoEntry {
+            Entry::Bookmark(bookmark) => RepoEntry {
                 path: repo_relative(&path),
                 kind: "bookmark",
                 title: bookmark.title,
@@ -343,12 +342,22 @@ fn identity(config: &Config) -> Result<(&str, &str), ()> {
 
 #[cfg(test)]
 mod tests {
+    use std::env;
+    use std::fs;
+    use std::path::Path;
+    use std::path::PathBuf;
+    use std::process;
+
+    use boom_bookmarks::git;
+    use git2::Repository;
+    use git2::RepositoryInitOptions;
+
     use super::*;
 
-    fn temp_dir(name: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("boom-ops-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir = env::temp_dir().join(format!("boom-ops-{name}-{}", process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
         dir
     }
 
@@ -366,7 +375,7 @@ mod tests {
 
         let err = sync(&config_path).unwrap_err();
         assert!(err.contains("gitrepo set-remote"), "{err}");
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -375,22 +384,20 @@ mod tests {
         let config_path = dir.join("config.toml");
         let remote = dir.join("remote.git");
         with_identity(&config_path);
-        git2::Repository::init_opts(
+        Repository::init_opts(
             &remote,
-            git2::RepositoryInitOptions::new()
-                .bare(true)
-                .initial_head("main"),
+            RepositoryInitOptions::new().bare(true).initial_head("main"),
         )
         .unwrap();
 
         gitrepo_create(&config_path, &dir.join("bookmarks"), remote.to_str()).unwrap();
         let report = sync(&config_path).unwrap();
         assert_eq!(report.integration, Integration::UpToDate);
-        assert!(git2::Repository::open(&remote)
+        assert!(Repository::open(&remote)
             .unwrap()
             .find_reference("refs/heads/main")
             .is_ok());
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -399,7 +406,7 @@ mod tests {
         let config_path = dir.join("config.toml");
         let err = gitrepo_set_remote(&config_path, "https://example.invalid/x.git").unwrap_err();
         assert!(err.contains("gitrepo create"), "{err}");
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -409,18 +416,16 @@ mod tests {
         with_identity(&config_path);
         let err = pull(&config_path).unwrap_err();
         assert!(err.contains("gitrepo create"), "{err}");
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&dir);
     }
 
-    fn repo_with_remote(dir: &std::path::Path) -> (std::path::PathBuf, std::path::PathBuf) {
+    fn repo_with_remote(dir: &Path) -> (PathBuf, PathBuf) {
         let config_path = dir.join("config.toml");
         let remote = dir.join("remote.git");
         with_identity(&config_path);
-        git2::Repository::init_opts(
+        Repository::init_opts(
             &remote,
-            git2::RepositoryInitOptions::new()
-                .bare(true)
-                .initial_head("main"),
+            RepositoryInitOptions::new().bare(true).initial_head("main"),
         )
         .unwrap();
         gitrepo_create(&config_path, &dir.join("bookmarks"), remote.to_str()).unwrap();
@@ -433,21 +438,21 @@ mod tests {
         let dir = temp_dir("pull_up_to_date");
         let (config_path, _remote) = repo_with_remote(&dir);
         assert_eq!(pull(&config_path).unwrap(), Integration::UpToDate);
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn pull_refuses_uncommitted_changes() {
         let dir = temp_dir("pull_dirty");
         let (config_path, _remote) = repo_with_remote(&dir);
-        std::fs::write(
+        fs::write(
             dir.join("bookmarks").join("0010_Docs.toml"),
             "title = \"D\"\nurl = \"https://d.example\"\n",
         )
         .unwrap();
         let err = pull(&config_path).unwrap_err();
         assert!(err.contains("uncommitted"), "{err}");
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -457,24 +462,18 @@ mod tests {
 
         // A second clone pushes a change, as another machine would.
         let other = dir.join("other");
-        git2::Repository::clone(remote.to_str().unwrap(), &other).unwrap();
-        std::fs::write(
+        Repository::clone(remote.to_str().unwrap(), &other).unwrap();
+        fs::write(
             other.join("0010_Docs.toml"),
             "title = \"D\"\nurl = \"https://d.example\"\n",
         )
         .unwrap();
-        boom_bookmarks::git::commit_all(
-            &other,
-            "other: add docs",
-            "Other",
-            "other@example.invalid",
-        )
-        .unwrap();
-        boom_bookmarks::git::push(&other).unwrap();
+        git::commit_all(&other, "other: add docs", "Other", "other@example.invalid").unwrap();
+        git::push(&other).unwrap();
 
         assert_eq!(pull(&config_path).unwrap(), Integration::FastForward);
         assert!(dir.join("bookmarks").join("0010_Docs.toml").exists());
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -484,8 +483,8 @@ mod tests {
         with_identity(&config_path);
         let repo = dir.join("bookmarks");
         gitrepo_create(&config_path, &repo, None).unwrap();
-        std::fs::create_dir_all(repo.join("0010_Work")).unwrap();
-        std::fs::write(
+        fs::create_dir_all(repo.join("0010_Work")).unwrap();
+        fs::write(
             repo.join("0010_Work").join("0010_Docs.toml"),
             "title = \"Docs\"\nurl = \"https://docs.example\"\n",
         )
@@ -500,11 +499,11 @@ mod tests {
         assert_eq!(entries[1].kind, "bookmark");
         assert_eq!(entries[1].title, "Docs");
         assert_eq!(entries[1].url.as_deref(), Some("https://docs.example"));
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     fn bookmark_node(title: &str, url: &str) -> boom_bookmarks::Node {
-        boom_bookmarks::Node::Bookmark(boom_bookmarks::Bookmark {
+        Node::Bookmark(boom_bookmarks::Bookmark {
             title: title.into(),
             url: url.into(),
         })
@@ -514,7 +513,7 @@ mod tests {
     fn write_refuses_a_stale_head() {
         let dir = temp_dir("write_stale");
         let (config_path, _remote) = repo_with_remote(&dir);
-        let tree = vec![boom_bookmarks::Node::Folder {
+        let tree = vec![Node::Folder {
             title: "bookmarks-bar".into(),
             children: vec![bookmark_node("Docs", "https://docs.example")],
         }];
@@ -525,7 +524,7 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.contains("changed outside"), "{err}");
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -533,7 +532,7 @@ mod tests {
         let dir = temp_dir("write_push");
         let (config_path, remote) = repo_with_remote(&dir);
         let head = repo_head(&config_path).unwrap();
-        let tree = vec![boom_bookmarks::Node::Folder {
+        let tree = vec![Node::Folder {
             title: "bookmarks-bar".into(),
             children: vec![bookmark_node("Docs", "https://docs.example")],
         }];
@@ -546,7 +545,7 @@ mod tests {
             .join("0010_Docs.toml")
             .exists());
 
-        let pushed = git2::Repository::open(&remote)
+        let pushed = Repository::open(&remote)
             .unwrap()
             .find_reference("refs/heads/main")
             .unwrap()
@@ -554,7 +553,7 @@ mod tests {
             .unwrap()
             .to_string();
         assert_eq!(pushed, new_head);
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -562,13 +561,13 @@ mod tests {
         let dir = temp_dir("write_unknown");
         let (config_path, _remote) = repo_with_remote(&dir);
         let head = repo_head(&config_path).unwrap();
-        let tree = vec![boom_bookmarks::Node::Folder {
+        let tree = vec![Node::Folder {
             title: "Random".into(),
             children: vec![],
         }];
         let err = write_browser_tree(&config_path, &tree, &head).unwrap_err();
         assert!(err.contains("bookmarks-bar"), "{err}");
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -579,17 +578,16 @@ mod tests {
 
         // Another clone pushes first, so this push will be rejected.
         let other = dir.join("other");
-        git2::Repository::clone(remote.to_str().unwrap(), &other).unwrap();
-        std::fs::write(
+        Repository::clone(remote.to_str().unwrap(), &other).unwrap();
+        fs::write(
             other.join("0010_Other.toml"),
             "title = \"O\"\nurl = \"https://o.example\"\n",
         )
         .unwrap();
-        boom_bookmarks::git::commit_all(&other, "other: add", "Other", "other@example.invalid")
-            .unwrap();
-        boom_bookmarks::git::push(&other).unwrap();
+        git::commit_all(&other, "other: add", "Other", "other@example.invalid").unwrap();
+        git::push(&other).unwrap();
 
-        let tree = vec![boom_bookmarks::Node::Folder {
+        let tree = vec![Node::Folder {
             title: "bookmarks-bar".into(),
             children: vec![bookmark_node("Docs", "https://docs.example")],
         }];
@@ -601,7 +599,7 @@ mod tests {
             .join("0010_bookmarks-bar")
             .join("0010_Docs.toml")
             .exists());
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -611,14 +609,13 @@ mod tests {
         let base = repo_head(&config_path).unwrap();
 
         let repo = dir.join("bookmarks");
-        std::fs::create_dir_all(repo.join("0010_bookmarks-bar")).unwrap();
-        std::fs::write(
+        fs::create_dir_all(repo.join("0010_bookmarks-bar")).unwrap();
+        fs::write(
             repo.join("0010_bookmarks-bar").join("0010_Docs.toml"),
             "title = \"Docs\"\nurl = \"https://docs.example\"\n",
         )
         .unwrap();
-        boom_bookmarks::git::commit_all(&repo, "test: add docs", "John Doe", "john@example.com")
-            .unwrap();
+        git::commit_all(&repo, "test: add docs", "John Doe", "john@example.com").unwrap();
 
         let changes = repo_changes_since(&config_path, &base).unwrap();
         // The root folder is new in git, so it is listed too. The browser
@@ -641,6 +638,6 @@ mod tests {
                 },
             ]
         );
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&dir);
     }
 }

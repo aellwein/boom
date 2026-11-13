@@ -4,6 +4,8 @@ use std::fs;
 use std::path::Path;
 
 use boom_bookmarks::{apply, git, plan, read_tree, Bookmark, Node};
+use git2::Repository;
+use git2::RepositoryInitOptions;
 
 fn bookmark(title: &str, url: &str) -> Node {
     Node::Bookmark(Bookmark {
@@ -73,9 +75,9 @@ fn update_removes_and_rewrites_files() {
 #[test]
 fn commit_all_commits_once_and_skips_unchanged_tree() {
     let dir = tempfile::tempdir().unwrap();
-    git2::Repository::init_opts(
+    Repository::init_opts(
         dir.path(),
-        git2::RepositoryInitOptions::new().initial_head("main"),
+        RepositoryInitOptions::new().initial_head("main"),
     )
     .unwrap();
     fs::write(dir.path().join(".metadata"), "[boom]\nformat_version = 1\n").unwrap();
@@ -93,7 +95,7 @@ fn commit_all_commits_once_and_skips_unchanged_tree() {
         git::commit_all(dir.path(), "sync: remove", "Test", "test@example.invalid").unwrap();
     assert!(third.is_some());
 
-    let repo = git2::Repository::open(dir.path()).unwrap();
+    let repo = Repository::open(dir.path()).unwrap();
     let head = repo.head().unwrap().peel_to_commit().unwrap();
     assert_eq!(head.message().unwrap(), "sync: remove");
     assert!(head

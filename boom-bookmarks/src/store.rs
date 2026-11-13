@@ -4,11 +4,15 @@
 //! ordered by their position prefix. The root `.metadata` file and the `.git`
 //! directory are never part of the tree.
 
+use std::error;
 use std::fmt;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use git2::ObjectType;
+use git2::Oid;
+use git2::Repository;
 use serde::{Deserialize, Serialize};
 
 use crate::model::{Bookmark, Node};
@@ -39,7 +43,7 @@ impl fmt::Display for Error {
     }
 }
 
-impl std::error::Error for Error {}
+impl error::Error for Error {}
 
 impl From<git2::Error> for Error {
     fn from(err: git2::Error) -> Self {
@@ -136,8 +140,8 @@ fn read_bookmark(path: &Path) -> Result<Bookmark, Error> {
 /// can be at a different commit. Folders with no bookmarks are not in git, so
 /// they do not appear here.
 pub fn read_tree_at_commit(root: &Path, commit_id: &str) -> Result<Vec<Node>, Error> {
-    let repo = git2::Repository::open(root)?;
-    let oid = git2::Oid::from_str(commit_id)?;
+    let repo = Repository::open(root)?;
+    let oid = Oid::from_str(commit_id)?;
     let tree = repo.find_commit(oid)?.tree()?;
     read_git_tree(&repo, &tree)
 }
@@ -150,10 +154,10 @@ fn read_git_tree(repo: &git2::Repository, tree: &git2::Tree) -> Result<Vec<Node>
             continue;
         }
         match entry.kind() {
-            Some(git2::ObjectType::Tree) => {
+            Some(ObjectType::Tree) => {
                 entries.push((order_key(&name), name, entry.id(), true));
             }
-            Some(git2::ObjectType::Blob) if has_bookmark_extension(&name) => {
+            Some(ObjectType::Blob) if has_bookmark_extension(&name) => {
                 entries.push((order_key(&name), name, entry.id(), false));
             }
             _ => {}
