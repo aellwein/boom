@@ -113,10 +113,10 @@ pub fn sibling_names(nodes: &[Node]) -> Vec<String> {
         *counts.entry(base.clone()).or_insert(0) += 1;
     }
     for (base, node) in bases.iter_mut().zip(nodes) {
-        if let Node::Bookmark(bookmark) = node {
-            if counts[base.as_str()] > 1 {
-                *base = format!("{base}-{}", short_hash(&bookmark.url));
-            }
+        if let Node::Bookmark(bookmark) = node
+            && counts[base.as_str()] > 1
+        {
+            *base = format!("{base}-{}", short_hash(&bookmark.url));
         }
     }
 

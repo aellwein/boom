@@ -54,10 +54,10 @@ pub fn commit_all(
         Err(err) if err.code() == ErrorCode::UnbornBranch => None,
         Err(err) => return Err(err),
     };
-    if let Some(parent) = &parent {
-        if parent.tree_id() == tree_id {
-            return Ok(None);
-        }
+    if let Some(parent) = &parent
+        && parent.tree_id() == tree_id
+    {
+        return Ok(None);
     }
 
     let signature = Signature::now(user_name, user_email)?;
@@ -156,10 +156,10 @@ pub fn integrate(path: &Path, user_name: &str, user_email: &str) -> Result<Integ
         .ok_or_else(|| Error::from_str("repository has no working directory"))?
         .to_path_buf();
     for delta in diff.deltas() {
-        if delta.status() == Delta::Deleted {
-            if let Some(file) = delta.old_file().path() {
-                remove_file_and_empty_parents(&workdir, file);
-            }
+        if delta.status() == Delta::Deleted
+            && let Some(file) = delta.old_file().path()
+        {
+            remove_file_and_empty_parents(&workdir, file);
         }
     }
     let mut checkout = CheckoutBuilder::new();
