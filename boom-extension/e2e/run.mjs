@@ -199,10 +199,11 @@ async function syncNow(port, extensionId) {
   }
 }
 
-// Drives the setup page the way a user does: fill in the form and save with the
-// default "merge" first sync. The repo is empty, so the first browser write
-// is allowed and creates the bookmark id map.
-async function runSetup(port, extensionId, repo, remote) {
+// Drives the setup page the way a user does: fill in the form and save. With
+// initialSync "merge" on an empty repo, the first browser write creates the
+// bookmark id map. With "overwrite", the setup page's Replace button is pressed
+// after saving, which replaces the browser's bookmarks with the repo's.
+async function runSetup(port, extensionId, repo, remote, { mode = "create", initialSync = "merge" } = {}) {
   const response = await fetch(`http://127.0.0.1:${port}/json/new?chrome-extension://${extensionId}/setup.html`, {
     method: "PUT",
   });
@@ -223,8 +224,10 @@ async function runSetup(port, extensionId, repo, remote) {
         set('userEmail', 'john@example.com');
         set('repoPath', ${JSON.stringify(repo)});
         set('remoteUrl', ${JSON.stringify(remote)});
-        form.querySelector('input[name=repoMode][value=create]').checked = true;
-        form.querySelector('input[name=initialSync][value=merge]').checked = true;
+        form.querySelector('input[name=repoMode][value=${mode}]').checked = true;
+        const sync = form.querySelector('input[name=initialSync][value=${initialSync}]');
+        sync.checked = true;
+        sync.dispatchEvent(new Event('change', { bubbles: true }));
         return true;
       })()`,
     );
@@ -239,6 +242,21 @@ async function runSetup(port, extensionId, repo, remote) {
     );
     if (saved !== "Setup saved.") fail(`setup: ${saved}`);
     step("setup saved");
+
+    if (initialSync === "overwrite") {
+      // The page asks for confirmation before replacing bookmarks; accept it.
+      await evaluate(page, "window.confirm = () => true; document.getElementById('overwrite').click(), true");
+      const replaced = await waitFor(
+        () =>
+          evaluate(
+            page,
+            "(() => { const t = document.getElementById('message').textContent; return t.startsWith('Replaced') || t.startsWith('Overwrite stopped') ? t : ''; })()",
+          ),
+        "the overwrite to finish",
+      );
+      if (!replaced.startsWith("Replaced")) fail(`overwrite: ${replaced}`);
+      step(`overwrite: ${replaced}`);
+    }
   } finally {
     page.close();
   }
@@ -332,6 +350,19 @@ async function main() {
       "the remote bookmark to appear in Chrome",
     );
     console.log("PASS: bookmark pushed to the remote appeared in Chrome");
+
+    step("overwrite: a browser-only bookmark is replaced by the repo's bookmarks");
+    // Writes are paused so the browser-only bookmark is not sent to the repo.
+    await evaluate(cdp, "chrome.storage.local.set({ suspendBrowserWrites: true })");
+    const localOnly = { title: "Only in browser", url: "https://example.com/only-in-browser" };
+    await evaluate(cdp, `chrome.bookmarks.create({ parentId: '1', title: ${JSON.stringify(localOnly.title)}, url: ${JSON.stringify(localOnly.url)} })`);
+    await runSetup(port, extensionId, repo, remote, { mode: "existing", initialSync: "overwrite" });
+    const countFor = (url) => evaluate(cdp, `chrome.bookmarks.search({ url: ${JSON.stringify(url)} }).then((r) => r.length)`);
+    if ((await countFor(localOnly.url)) !== 0) fail("browser-only bookmark survived the overwrite");
+    for (const url of [BOOKMARK.url, remoteBookmark.url]) {
+      if ((await countFor(url)) !== 1) fail(`repo bookmark ${url} is missing after the overwrite`);
+    }
+    console.log("PASS: overwrite replaced the browser's bookmarks with the repo's");
   } catch (err) {
     const dump = cdp
       ? await evaluate(cdp, "chrome.storage.local.get(null)").catch((e) => `storage unavailable: ${e.message}`)
