@@ -1,5 +1,7 @@
 # boom
 
+[![test](https://github.com/aellwein/boom/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/aellwein/boom/actions/workflows/test.yml)
+
 A bookmark manager that keeps browser bookmarks in sync through a git repository. Each machine with a browser can share the same bookmarks.
 
 > **Status: early development.** The host and CLI skeleton works. The browser extension and bookmark sync are not built yet.
