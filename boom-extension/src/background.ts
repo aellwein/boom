@@ -5,7 +5,7 @@
 import type { HostResponse, PingResult } from "./protocol.js";
 import { callHost } from "./host.js";
 import { PULL_ALARM, runPull, schedulePull } from "./schedule.js";
-import { scheduleBrowserWrite } from "./browser-write.js";
+import { scheduleBrowserWrite, writeBrowserChanges } from "./browser-write.js";
 import { convertBrowserTree } from "./browser-tree.js";
 import { summarize, type TreeNode, type TreeSummary } from "./model.js";
 
@@ -24,6 +24,14 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
         sendResponse(failure);
       });
     // Returning true keeps the message channel open for the async reply.
+    return true;
+  }
+  if (type === "sync_now") {
+    // Pull and apply, then send browser edits, without waiting for the alarm.
+    runPull()
+      .then(() => writeBrowserChanges())
+      .then(() => sendResponse({ ok: true }))
+      .catch((err: unknown) => sendResponse({ ok: false, error: String(err) }));
     return true;
   }
   if (type === "bookmarks") {

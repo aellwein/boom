@@ -13,6 +13,7 @@ const bookmarksButton = document.getElementById("bookmarks") as HTMLButtonElemen
 const bookmarkList = document.getElementById("bookmark-list") as HTMLUListElement;
 const lastPull = document.getElementById("last-pull") as HTMLParagraphElement;
 const lastWrite = document.getElementById("last-write") as HTMLParagraphElement;
+const syncNow = document.getElementById("sync-now") as HTMLButtonElement;
 
 async function checkHost(): Promise<void> {
   status.textContent = "Checking host...";
@@ -57,6 +58,18 @@ function addItem(text: string): void {
   bookmarkList.append(item);
 }
 
+async function runSyncNow(): Promise<void> {
+  syncNow.disabled = true;
+  lastPull.textContent = "Syncing...";
+  await chrome.runtime.sendMessage({ type: "sync_now" });
+  await showLastPull();
+  await showLastWrite();
+  syncNow.disabled = false;
+}
+
+syncNow.addEventListener("click", () => {
+  void runSyncNow();
+});
 pingButton.addEventListener("click", () => {
   void checkHost();
 void showLastPull();

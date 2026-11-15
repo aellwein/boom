@@ -4,6 +4,7 @@
 
 import { callHost } from "./host.js";
 import { applyRepoToBrowser } from "./repo-apply.js";
+import { scheduleBrowserWrite } from "./browser-write.js";
 import type { HostConfig, PullRecord, PullResult } from "./protocol.js";
 
 export const PULL_ALARM = "boom-pull";
@@ -68,6 +69,9 @@ export async function runPull(): Promise<void> {
     if (reply.ok) {
       try {
         await applyRepoToBrowser();
+        // Browser edits made while the repo was behind were held back. Send
+        // them now that the browser mirrors the repo again.
+        scheduleBrowserWrite();
       } catch (err) {
         record.ok = false;
         record.error = `applying to the browser failed: ${String(err)}`;
