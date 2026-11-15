@@ -75,6 +75,19 @@ npm test
 - `boom-extension/dist/` for Chromium browsers (Chrome, Edge, Brave, Opera).
 - `boom-extension/dist-firefox/` for Firefox.
 
+#### End-to-end test
+
+`npm run e2e` runs a real Chrome for Testing build with the extension, the real host binary, and a local bare git remote. It drives the setup page, creates a bookmark in Chrome, checks that it is pushed, pushes a bookmark from a second clone, and checks that it appears in Chrome after Sync now. It uses a temporary HOME and profile, so your own config and bookmarks are not touched.
+
+Requirements: `cargo build -p boom-host` in the repo root, and a Chrome for Testing binary (branded Google Chrome ignores `--load-extension`):
+
+```bash
+npx @puppeteer/browsers install chrome@stable
+CHROME_FOR_TESTING=/path/printed/by/that/command npm run e2e
+```
+
+Set `KEEP=1` to keep the temp directory, or `HEADED=1` to show the browser window.
+
 #### Chromium
 
 Load `boom-extension/dist` as an unpacked extension (developer mode on the extensions page). The browser shows an ID for it. Copy `native-host/chrome/com.boom.host.json`, replace `/ABSOLUTE/PATH/TO/boom` with the path of the `boom` binary and `<EXTENSION_ID>` with the ID, then place it in the browser's native messaging folder. On macOS for Chrome:

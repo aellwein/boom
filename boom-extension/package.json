@@ -8,7 +8,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/copy-assets.mjs chromium && node scripts/copy-assets.mjs firefox",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "npm run build && node --test dist/test/"
+    "test": "npm run build && node --test dist/test/",
+    "e2e": "npm run build && node e2e/run.mjs"
   },
   "devDependencies": {
     "@types/chrome": "^0.3.7",
