@@ -101,9 +101,9 @@ To load the extension in Firefox, open `about:debugging`, choose "This Firefox",
 ## Roadmap
 
 - [x] Local git repo creation and config management
-- [ ] Bookmark sync library: git reads and writes, state calculation
-- [ ] Browser extension for Chromium-based browsers (scaffold and host ping done)
-- [ ] Periodic pull from the extension
+- [x] Bookmark sync library: git reads and writes, state calculation
+- [x] Browser extension for Chromium-based browsers (tested in Chrome; Edge, Brave and Opera manifest paths still to add)
+- [x] Periodic pull from the extension
 - [ ] Firefox support
 - [ ] GitHub repo creation
 - [ ] Windows and Linux packaging
