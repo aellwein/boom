@@ -32,15 +32,28 @@ export async function overwriteFromRepo(): Promise<OverwriteReport> {
 
   const { roots, creates } = planOverwrite(entries);
 
+  // Not every profile has every root. Chromium has no "Mobile bookmarks" folder
+  // unless it is in use, and getChildren on a missing id fails. Check before
+  // anything is removed, so a missing root cannot leave the browser half replaced.
+  const [browserRoot] = await chrome.bookmarks.getTree();
+  const existingRoots = (browserRoot.children ?? []).filter((node) => (Object.values(ROOT_IDS) as string[]).includes(node.id));
+  const existingIds = new Set(existingRoots.map((node) => node.id));
+  const missing = creates
+    .map((step) => ("browserId" in step.parent ? step.parent.browserId : undefined))
+    .filter((id): id is string => id !== undefined && !existingIds.has(id));
+  if (missing.length > 0) {
+    throw new Error(`the browser has no root folder with id ${[...new Set(missing)].join(", ")}, so nothing was replaced`);
+  }
+
   // Browser writes pause while this runs, so its own edits are not sent back.
   await chrome.storage.local.set({ [SUSPEND_KEY]: true });
   const idMap: Record<string, string> = { ...roots };
   let removed = 0;
   let created = 0;
+  let completed = false;
   try {
-    for (const rootId of Object.values(ROOT_IDS)) {
-      const children = await chrome.bookmarks.getChildren(rootId);
-      for (const child of children) {
+    for (const root of existingRoots) {
+      for (const child of root.children ?? []) {
         await chrome.bookmarks.removeTree(child.id);
         removed += 1;
       }
@@ -60,10 +73,17 @@ export async function overwriteFromRepo(): Promise<OverwriteReport> {
       idMap[step.path] = node.id;
       created += 1;
     }
+    completed = true;
   } finally {
-    // Save what was created, even if a later step failed. The head saved is
-    // the one the browser now mirrors.
-    await chrome.storage.local.set({ [ID_MAP_KEY]: idMap, [LAST_HEAD_KEY]: head.result.head });
+    if (completed) {
+      // The browser now mirrors the head that was read at the start.
+      await chrome.storage.local.set({ [ID_MAP_KEY]: idMap, [LAST_HEAD_KEY]: head.result.head });
+    } else {
+      // Part of the browser was replaced. Forget the ID map and head, so
+      // browser writes stop ("the first sync has not run") instead of sending
+      // the half-replaced tree to the repo.
+      await chrome.storage.local.remove([ID_MAP_KEY, LAST_HEAD_KEY]);
+    }
     await chrome.storage.local.set({ [SUSPEND_KEY]: false });
   }
   return { removed, created };
