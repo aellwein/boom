@@ -8,5 +8,3 @@ edition = "2024"
 license = "MIT"
 authors = ["Alex Ellwein"]
 repository = "https://github.com/aellwein/boom"
-homepage = "https://github.com/aellwein/boom"
-readme = "README.md"
