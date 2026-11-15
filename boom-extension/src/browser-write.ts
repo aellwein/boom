@@ -8,7 +8,8 @@
 import { callHost } from "./host.js";
 import { ID_MAP_KEY, LAST_HEAD_KEY, LAST_WRITE_KEY, SUSPEND_KEY } from "./keys.js";
 import { repoTreeFromBrowser, type BrowserBookmarkNode } from "./browser-tree.js";
-import type { HeadResult } from "./protocol.js";
+import { buildIdMap, repoHasBookmarks } from "./id-map.js";
+import type { HeadResult, RepoEntry } from "./protocol.js";
 
 /// Pause after the last browser change before writing, so a burst of edits
 /// is sent once.
@@ -81,32 +82,96 @@ export async function writeBrowserChanges(): Promise<void> {
 
 async function writeOnce(): Promise<void> {
   const stored = await chrome.storage.local.get([ID_MAP_KEY, LAST_HEAD_KEY, SUSPEND_KEY]);
+  if (stored[SUSPEND_KEY] === true) {
+    return;
+  }
+  if (stored[ID_MAP_KEY] === undefined) {
+    await firstWrite();
+    return;
+  }
   const gate = gateWrite({
-    hasIdMap: stored[ID_MAP_KEY] !== undefined,
+    hasIdMap: true,
     lastSeenHead: stored[LAST_HEAD_KEY] as string | undefined,
-    suspended: stored[SUSPEND_KEY] === true,
+    suspended: false,
   });
   if (!gate.ok) {
     return;
   }
+  const head = await sendBrowserTree(gate.head);
+  if (head.ok) {
+    await rebuildIdMap(head.head);
+  }
+}
 
+/// The first write, before any ID map exists. It is allowed only into a repo
+/// with no bookmarks, so nothing in the repo can be lost.
+async function firstWrite(): Promise<void> {
+  const entries = await callHost<RepoEntry[]>({ action: "repo_entries" });
+  if (!entries.ok || !entries.result) {
+    await recordWrite({ ok: false, error: entries.error ?? "could not read the repo" });
+    return;
+  }
+  if (repoHasBookmarks(entries.result)) {
+    await recordWrite({
+      ok: false,
+      error: "the repo already has bookmarks; use Replace browser bookmarks on the setup page first",
+    });
+    return;
+  }
+  const head = await callHost<HeadResult>({ action: "repo_head" });
+  if (!head.ok || !head.result) {
+    await recordWrite({ ok: false, error: head.error ?? "could not read the repo head" });
+    return;
+  }
+  const written = await sendBrowserTree(head.result.head);
+  if (written.ok) {
+    await rebuildIdMap(written.head);
+  }
+}
+
+/// Sends the browser's tree to the repo. Records the outcome. On success
+/// returns the new head.
+async function sendBrowserTree(expectedHead: string): Promise<{ ok: true; head: string } | { ok: false }> {
   const [root] = await chrome.bookmarks.getTree();
   const tree = repoTreeFromBrowser(root as BrowserBookmarkNode);
   const at = new Date().toISOString();
   try {
     const reply = await callHost<HeadResult>({
       action: "write_browser_tree",
-      params: { tree, expected_head: gate.head },
+      params: { tree, expected_head: expectedHead },
     });
     if (reply.ok && reply.result) {
       await chrome.storage.local.set({
         [LAST_HEAD_KEY]: reply.result.head,
         [LAST_WRITE_KEY]: { at, ok: true },
       });
-    } else {
-      await chrome.storage.local.set({ [LAST_WRITE_KEY]: { at, ok: false, error: reply.error } });
+      return { ok: true, head: reply.result.head };
     }
+    await recordWrite({ at, ok: false, error: reply.error });
   } catch (err) {
-    await chrome.storage.local.set({ [LAST_WRITE_KEY]: { at, ok: false, error: String(err) } });
+    await recordWrite({ at, ok: false, error: String(err) });
   }
+  return { ok: false };
+}
+
+/// Rebuilds the ID map from the repo after a successful write. If the two do
+/// not line up, the map is removed, so later writes stop with an error rather
+/// than work from stale IDs.
+async function rebuildIdMap(head: string): Promise<void> {
+  const entries = await callHost<RepoEntry[]>({ action: "repo_entries" });
+  const [root] = await chrome.bookmarks.getTree();
+  const pairing = entries.ok && entries.result ? buildIdMap(root as BrowserBookmarkNode, entries.result) : undefined;
+  if (pairing?.ok) {
+    await chrome.storage.local.set({ [ID_MAP_KEY]: pairing.idMap, [LAST_HEAD_KEY]: head });
+    return;
+  }
+  await chrome.storage.local.remove(ID_MAP_KEY);
+  await recordWrite({
+    ok: false,
+    error: `saved to the repo, but the ID map could not be rebuilt: ${pairing && !pairing.ok ? pairing.reason : entries.error ?? "unknown"}`,
+  });
+}
+
+async function recordWrite(record: { at?: string; ok: boolean; error?: string }): Promise<void> {
+  await chrome.storage.local.set({ [LAST_WRITE_KEY]: { at: record.at ?? new Date().toISOString(), ok: record.ok, error: record.error } });
 }
