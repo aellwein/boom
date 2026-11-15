@@ -9,9 +9,10 @@
     "build": "tsc -p tsconfig.json && node scripts/copy-assets.mjs chromium && node scripts/copy-assets.mjs firefox",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "npm run build && node --test dist/test/",
-    "e2e": "npm run build && node e2e/run.mjs"
+    "e2e": "npm run build && playwright test -c e2e/playwright.config.ts"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
     "@types/chrome": "^0.3.7",
     "@types/node": "^26.6.6",
     "typescript": "^7.0.2"
