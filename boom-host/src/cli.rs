@@ -67,6 +67,18 @@ pub enum GitrepoCommand {
         #[arg(long)]
         remote: Option<String>,
     },
+    /// Create a private repo on GitHub with the gh CLI, set it as `origin`, and push.
+    GithubCreate {
+        /// Repo name. Defaults to `bookmarks`.
+        #[arg(long)]
+        name: Option<String>,
+        /// Owner, such as a user or organisation. Defaults to your account.
+        #[arg(long)]
+        owner: Option<String>,
+        /// Create a public repo instead of a private one.
+        #[arg(long)]
+        public: bool,
+    },
     /// Set the URL of `origin` in the configured repo, adding it if missing.
     SetRemote {
         /// URL of the remote, e.g. git@github.com:you/bookmarks.git.
@@ -100,6 +112,18 @@ pub fn run(cli: Cli) -> i32 {
                 command: GitrepoCommand::Create { path, remote },
             } => ops::gitrepo_create(&config_path, &path, remote.as_deref())
                 .map(|()| println!("created bookmark repo at {}", path.display())),
+            CliCommand::Gitrepo {
+                command:
+                    GitrepoCommand::GithubCreate {
+                        name,
+                        owner,
+                        public,
+                    },
+            } => {
+                let name = name.unwrap_or_else(|| ops::DEFAULT_GITHUB_REPO.to_string());
+                ops::github_repo_create(&config_path, &name, owner.as_deref(), public)
+                    .map(|repo| println!("created {} and pushed to it", repo.url))
+            }
             CliCommand::Gitrepo {
                 command: GitrepoCommand::SetRemote { url },
             } => ops::gitrepo_set_remote(&config_path, &url)
@@ -236,6 +260,28 @@ mod tests {
             "gitrepo",
             "set-remote",
             "git@example.com:me/bookmarks.git",
+        ]);
+        assert!(cli.is_ok(), "{:?}", cli.err());
+    }
+
+    #[test]
+    fn parses_github_create_with_defaults() {
+        let cli = Cli::try_parse_from(["boom", "cli", "gitrepo", "github-create"]);
+        assert!(cli.is_ok(), "{:?}", cli.err());
+    }
+
+    #[test]
+    fn parses_github_create_with_options() {
+        let cli = Cli::try_parse_from([
+            "boom",
+            "cli",
+            "gitrepo",
+            "github-create",
+            "--name",
+            "bm",
+            "--owner",
+            "john-doe",
+            "--public",
         ]);
         assert!(cli.is_ok(), "{:?}", cli.err());
     }

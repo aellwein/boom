@@ -6,6 +6,7 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use boom_bookmarks::git::{self, Integration};
 use boom_bookmarks::{Change, Entry, Node};
@@ -269,6 +270,92 @@ pub fn gitrepo_status(config_path: &Path) -> Result<RepoStatus, String> {
         repo_path: Some(path),
         origin_url,
     })
+}
+
+/// Name of the GitHub repo that `github-create` makes when no name is given.
+pub const DEFAULT_GITHUB_REPO: &str = "bookmarks";
+
+/// A repo created on GitHub.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GithubRepo {
+    pub url: String,
+    pub ssh_url: String,
+}
+
+/// Arguments for `gh repo create`. The repo is private unless `public` is set.
+pub fn gh_create_args(name: &str, owner: Option<&str>, public: bool) -> Vec<String> {
+    let full = match owner {
+        Some(owner) => format!("{owner}/{name}"),
+        None => name.to_string(),
+    };
+    let visibility = if public { "--public" } else { "--private" };
+    vec!["repo".into(), "create".into(), full, visibility.into()]
+}
+
+/// Creates a GitHub repo with the gh CLI, sets `origin` to it, and pushes the
+/// bookmark repo. Fails if `origin` already exists.
+///
+/// The repo is created first. If the push then fails, the repo stays on GitHub
+/// with `origin` set, and the next `sync` retries the push.
+pub fn github_repo_create(
+    config_path: &Path,
+    name: &str,
+    owner: Option<&str>,
+    public: bool,
+) -> Result<GithubRepo, String> {
+    github_repo_create_with("gh", config_path, name, owner, public)
+}
+
+fn github_repo_create_with(
+    gh: &str,
+    config_path: &Path,
+    name: &str,
+    owner: Option<&str>,
+    public: bool,
+) -> Result<GithubRepo, String> {
+    let config = config_show(config_path)?;
+    let repo_path = repo_path(&config)?;
+    if git::has_origin(repo_path).map_err(|err| err.to_string())? {
+        return Err(
+            "the bookmark repo already has an origin; use gitrepo set-remote to change it"
+                .to_string(),
+        );
+    }
+
+    let url = run_gh(gh, &gh_create_args(name, owner, public))?;
+    if url.is_empty() {
+        return Err("gh did not return the new repo's URL".to_string());
+    }
+    let view = vec![
+        "repo".to_string(),
+        "view".to_string(),
+        url.clone(),
+        "--json".to_string(),
+        "sshUrl".to_string(),
+        "--jq".to_string(),
+        ".sshUrl".to_string(),
+    ];
+    let ssh_url = run_gh(gh, &view)?;
+
+    git::set_origin(repo_path, &ssh_url).map_err(|err| err.to_string())?;
+    git::push(repo_path).map_err(|err| {
+        format!("the repo was created at {url}, but the first push failed: {err}. Run boom cli sync to retry.")
+    })?;
+    Ok(GithubRepo { url, ssh_url })
+}
+
+/// Runs `gh` and returns its trimmed standard output.
+fn run_gh(gh: &str, args: &[String]) -> Result<String, String> {
+    let output = Command::new(gh).args(args).output().map_err(|err| {
+        format!("cannot run {gh}: {err}. Install the GitHub CLI and run gh auth login")
+    })?;
+    if !output.status.success() {
+        return Err(format!(
+            "gh failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
 /// Sets the `origin` URL of the bookmark repo, adding the remote if needed.
@@ -643,5 +730,51 @@ mod tests {
             ]
         );
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn gh_args_default_to_a_private_repo() {
+        assert_eq!(
+            gh_create_args("bookmarks", None, false),
+            vec!["repo", "create", "bookmarks", "--private"]
+        );
+    }
+
+    #[test]
+    fn gh_args_use_the_owner_and_visibility() {
+        assert_eq!(
+            gh_create_args("bm", Some("john-doe"), true),
+            vec!["repo", "create", "john-doe/bm", "--public"]
+        );
+    }
+
+    #[test]
+    fn github_create_reports_a_missing_gh() {
+        let dir = temp_dir("gh_missing");
+        let config_path = dir.join("config.toml");
+        with_identity(&config_path);
+        gitrepo_create(&config_path, &dir.join("bookmarks"), None).unwrap();
+
+        let err = github_repo_create_with(
+            "/nonexistent/gh-for-boom-test",
+            &config_path,
+            "bookmarks",
+            None,
+            false,
+        )
+        .unwrap_err();
+        assert!(err.contains("cannot run"), "{err}");
+        assert!(!git::has_origin(&dir.join("bookmarks")).unwrap());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn github_create_refuses_an_existing_origin() {
+        let dir = temp_dir("gh_origin");
+        let (config_path, _remote) = repo_with_remote(&dir);
+        let err =
+            github_repo_create_with("gh", &config_path, "bookmarks", None, false).unwrap_err();
+        assert!(err.contains("already has an origin"), "{err}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
